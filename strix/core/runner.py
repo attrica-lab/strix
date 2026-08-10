@@ -176,8 +176,8 @@ async def run_strix_scan(
         coordinator = AgentCoordinator()
     coordinator.set_snapshot_path(agents_path)
     coordinator.configure_denial_fallback(
-        getattr(settings.llm, "fallback_model", None),
-        getattr(settings.llm, "denied_retries", 3),
+        settings.llm.fallback_model,
+        settings.llm.denied_retries,
     )
 
     from strix.tools.notes.tools import hydrate_notes_from_disk
