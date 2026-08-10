@@ -75,7 +75,25 @@ async def _run_once(
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_falls_back_after_repeated_content_denials(
+async def test_a_denied_turn_is_retried_on_the_fallback_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    streams = [_guardrail_stream(), _FakeStream()]
+    result, models, coordinator = await _run_once(
+        monkeypatch,
+        streams,
+        fallback_model="openai/gpt-5.4",
+    )
+
+    assert result is streams[1]
+    assert [model for model, _ in models] == ["openai/gpt-5.6-sol", "openai/gpt-5.4"]
+    # One denial is below the threshold, so the agent is not pinned to the
+    # fallback and its next turn starts on the main model again.
+    assert await coordinator.is_on_denial_fallback("root") is False
+
+
+@pytest.mark.asyncio
+async def test_agent_is_pinned_to_the_fallback_after_repeated_denials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     streams = [_guardrail_stream() for _ in range(3)] + [_FakeStream()]
@@ -86,7 +104,7 @@ async def test_run_cycle_falls_back_after_repeated_content_denials(
     )
 
     assert result is streams[3]
-    assert [model for model, _ in models] == ["openai/gpt-5.6-sol"] * 3 + ["openai/gpt-5.4"]
+    assert [model for model, _ in models] == ["openai/gpt-5.6-sol"] + ["openai/gpt-5.4"] * 3
     assert await coordinator.is_on_denial_fallback("root") is True
 
 
@@ -100,7 +118,7 @@ async def test_run_cycle_does_not_retry_guardrail_without_fallback(
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_switches_on_first_denial_at_boundary(
+async def test_run_cycle_pins_on_first_denial_at_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     streams = [_guardrail_stream(), _FakeStream()]

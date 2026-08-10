@@ -36,11 +36,11 @@ Configure Strix using environment variables or a config file.
 </ParamField>
 
 <ParamField path="STRIX_LLM_FALLBACK" type="string">
-  Optional fallback model used after repeated content-guardrail denials within one agent's lifecycle. Unset disables this behavior.
+  Optional model that retries any turn blocked by a content guardrail. Unset disables this behavior, leaving a denial terminal for that agent.
 </ParamField>
 
 <ParamField path="STRIX_LLM_DENIED_RETRIES" default="3" type="integer">
-  Number of content-guardrail denials before the agent switches to `STRIX_LLM_FALLBACK` for the rest of its lifecycle.
+  Content-guardrail denials an agent may take before it is pinned to `STRIX_LLM_FALLBACK` for the rest of its lifecycle. Below that count it returns to the main model on the next turn. Counted per agent.
 </ParamField>
 
 <ParamField path="STRIX_REASONING_EFFORT" default="high" type="string">

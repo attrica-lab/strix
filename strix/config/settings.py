@@ -48,10 +48,10 @@ class LlmSettings(BaseSettings):
         default=False,
         alias="STRIX_FORCE_REQUIRED_TOOL_CHOICE",
     )
-    # A model to fall back to for the rest of an agent's lifecycle once it has
-    # been content-denied ``denied_retries`` times (e.g. a ChatGPT-subscription
-    # cyber-risk guardrail block). Unset disables the fallback: a denial stays
-    # terminal for that agent as before.
+    # A model that serves any content-denied turn (e.g. a ChatGPT-subscription
+    # cyber-risk guardrail block), and that an agent is pinned to for the rest
+    # of its lifecycle once it has been denied ``denied_retries`` times. Unset
+    # disables the fallback: a denial stays terminal for that agent as before.
     fallback_model: str | None = Field(default=None, alias="STRIX_LLM_FALLBACK")
     denied_retries: int = Field(default=3, ge=0, alias="STRIX_LLM_DENIED_RETRIES")
     prompt_cache: bool = Field(
