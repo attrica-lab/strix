@@ -175,9 +175,20 @@ async def run_strix_scan(
     if coordinator is None:
         coordinator = AgentCoordinator()
     coordinator.set_snapshot_path(agents_path)
+    fallback_model = settings.llm.fallback_model
     coordinator.configure_denial_fallback(
-        settings.llm.fallback_model,
+        fallback_model,
         settings.llm.denied_retries,
+        model_settings=make_model_settings(
+            settings.llm.reasoning_effort,
+            model_name=fallback_model,
+            force_required_tool_choice=settings.llm.force_required_tool_choice,
+            request_timeout=settings.llm.timeout,
+            prompt_cache=settings.llm.prompt_cache,
+            extra_headers=settings.llm.extra_headers,
+        )
+        if fallback_model
+        else None,
     )
 
     from strix.tools.notes.tools import hydrate_notes_from_disk

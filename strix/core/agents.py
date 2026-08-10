@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
     from agents.items import TResponseInputItem
     from agents.memory import Session
+    from agents.model_settings import ModelSettings
 
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ class AgentCoordinator:
         self.denial_counts: dict[str, int] = {}
         self.denial_fallback: set[str] = set()
         self._denial_fallback_model: str | None = None
+        self._denial_fallback_model_settings: ModelSettings | None = None
         self._denied_retries: int = 3
         self.wait_kinds: dict[str, WaitKind] = {}
         self.runtimes: dict[str, AgentRuntime] = {}
@@ -71,14 +73,24 @@ class AgentCoordinator:
     def set_snapshot_path(self, path: Path) -> None:
         self._snapshot_path = path
 
-    def configure_denial_fallback(self, model: str | None, denied_retries: int) -> None:
+    def configure_denial_fallback(
+        self,
+        model: str | None,
+        denied_retries: int,
+        model_settings: ModelSettings | None = None,
+    ) -> None:
         """Configure the per-agent content denial fallback."""
         self._denial_fallback_model = model
+        self._denial_fallback_model_settings = model_settings
         self._denied_retries = denied_retries
 
     @property
     def denial_fallback_model(self) -> str | None:
         return self._denial_fallback_model
+
+    @property
+    def denial_fallback_model_settings(self) -> ModelSettings | None:
+        return self._denial_fallback_model_settings
 
     @property
     def denied_retries(self) -> int:

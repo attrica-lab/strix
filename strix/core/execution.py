@@ -648,7 +648,11 @@ async def _run_cycle(  # noqa: PLR0912, PLR0915
         active_run_config = run_config
         if coordinator.denial_fallback_model and await coordinator.is_on_denial_fallback(agent_id):
             active_run_config = dataclasses.replace(
-                run_config, model=coordinator.denial_fallback_model
+                run_config,
+                model=coordinator.denial_fallback_model,
+                model_settings=(
+                    coordinator.denial_fallback_model_settings or run_config.model_settings
+                ),
             )
         stream: Any = None
         pre_run_items: list[Any] = []

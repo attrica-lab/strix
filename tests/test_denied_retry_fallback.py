@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from agents import RunConfig, Runner
+from agents import ModelSettings, RunConfig, Runner
 
 from strix.config import codex
 from strix.core import execution
@@ -39,13 +39,14 @@ async def _run_once(
     fallback_model: str | None = None,
     denied_retries: int = 3,
     primary_model: str = "openai/gpt-5.6-sol",
-) -> tuple[Any, list[str | None], AgentCoordinator]:
+    fallback_model_settings: ModelSettings | None = None,
+) -> tuple[Any, list[tuple[str | None, ModelSettings]], AgentCoordinator]:
     _patch_fast_backoff(monkeypatch)
-    calls: list[str | None] = []
+    calls: list[tuple[str | None, ModelSettings]] = []
 
     def _fake_run_streamed(*_args: Any, **kwargs: Any) -> _FakeStream:
         run_config = kwargs["run_config"]
-        calls.append(run_config.model)
+        calls.append((run_config.model, run_config.model_settings))
         return streams[len(calls) - 1]
 
     monkeypatch.setattr(Runner, "run_streamed", _fake_run_streamed)
@@ -53,14 +54,16 @@ async def _run_once(
     coordinator = AgentCoordinator()
     await coordinator.register("root", "strix", parent_id=None)
     if fallback_model is not None:
-        coordinator.configure_denial_fallback(fallback_model, denied_retries)
+        coordinator.configure_denial_fallback(
+            fallback_model, denied_retries, model_settings=fallback_model_settings
+        )
 
     result = await execution._run_cycle(
         object(),
         coordinator,
         "root",
         input_data="task",
-        run_config=RunConfig(model=primary_model),
+        run_config=RunConfig(model=primary_model, model_settings=ModelSettings()),
         context={},
         max_turns=5,
         session=None,
@@ -83,7 +86,7 @@ async def test_run_cycle_falls_back_after_repeated_content_denials(
     )
 
     assert result is streams[3]
-    assert models == ["openai/gpt-5.6-sol"] * 3 + ["openai/gpt-5.4"]
+    assert [model for model, _ in models] == ["openai/gpt-5.6-sol"] * 3 + ["openai/gpt-5.4"]
     assert await coordinator.is_on_denial_fallback("root") is True
 
 
@@ -109,8 +112,27 @@ async def test_run_cycle_switches_on_first_denial_at_boundary(
     )
 
     assert result is streams[1]
-    assert models == ["openai/gpt-5.6-sol", "openai/gpt-5.4"]
+    assert [model for model, _ in models] == ["openai/gpt-5.6-sol", "openai/gpt-5.4"]
     assert await coordinator.is_on_denial_fallback("root") is True
+
+
+@pytest.mark.asyncio
+async def test_fallback_uses_its_own_model_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fallback_settings = ModelSettings(parallel_tool_calls=True)
+    streams = [_guardrail_stream(), _FakeStream()]
+    result, calls, _coordinator = await _run_once(
+        monkeypatch,
+        streams,
+        fallback_model="openai/gpt-5.4",
+        denied_retries=1,
+        fallback_model_settings=fallback_settings,
+    )
+
+    assert result is streams[1]
+    assert calls[0][1] is not fallback_settings
+    assert calls[1][1] is fallback_settings
 
 
 @pytest.mark.asyncio
