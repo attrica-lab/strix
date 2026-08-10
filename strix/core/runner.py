@@ -22,6 +22,7 @@ from strix.config import load_settings
 from strix.config.models import (
     StrixProvider,
     configure_sdk_model_defaults,
+    fallback_model_rejection,
     uses_chat_completions_tool_schema,
 )
 from strix.config.settings import DEFAULT_MAX_TURNS
@@ -177,14 +178,11 @@ async def run_strix_scan(
     coordinator.set_snapshot_path(agents_path)
     fallback_model = settings.llm.fallback_model
     if fallback_model and (
-        uses_chat_completions_tool_schema(fallback_model, settings) != chat_completions_tools
+        rejection := fallback_model_rejection(fallback_model, resolved_model, settings)
     ):
-        # Agents build their tool set once, for the primary model's schema. A
-        # fallback on the other SDK route would reject every replayed turn, so
-        # it can never recover a denied agent — fail fast instead.
         raise RuntimeError(
-            f"STRIX_LLM_FALLBACK '{fallback_model}' uses a different tool schema than "
-            f"'{resolved_model}'. Pick a fallback from the same provider family."
+            f"STRIX_LLM_FALLBACK '{fallback_model}' {rejection}; it could never serve a "
+            f"turn for '{resolved_model}'. Pick a fallback from the same provider family."
         )
     coordinator.configure_denial_fallback(
         fallback_model,
