@@ -176,6 +176,16 @@ async def run_strix_scan(
         coordinator = AgentCoordinator()
     coordinator.set_snapshot_path(agents_path)
     fallback_model = settings.llm.fallback_model
+    if fallback_model and (
+        uses_chat_completions_tool_schema(fallback_model, settings) != chat_completions_tools
+    ):
+        # Agents build their tool set once, for the primary model's schema. A
+        # fallback on the other SDK route would reject every replayed turn, so
+        # it can never recover a denied agent — fail fast instead.
+        raise RuntimeError(
+            f"STRIX_LLM_FALLBACK '{fallback_model}' uses a different tool schema than "
+            f"'{resolved_model}'. Pick a fallback from the same provider family."
+        )
     coordinator.configure_denial_fallback(
         fallback_model,
         settings.llm.denied_retries,
