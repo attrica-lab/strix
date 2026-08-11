@@ -14,6 +14,7 @@ from agents.usage import Usage
 from strix.config import codex
 from strix.config.loader import load_settings
 from strix.core.paths import run_dir_for
+from strix.report.pricing import resolve_litellm_model
 from strix.report.sarif import write_sarif
 from strix.report.usage import LLMUsageLedger
 from strix.report.writer import (
@@ -696,10 +697,13 @@ def _estimate_response_cost(kwargs: Any, completion_response: Any) -> float | No
         candidates.append(model.rsplit("/", 1)[-1])
 
     for candidate in candidates:
+        resolved = resolve_litellm_model(candidate)
+        if not resolved:
+            continue
         try:
             value = completion_cost(
-                completion_response={"model": candidate, "usage": usage_payload},
-                model=candidate,
+                completion_response={"model": resolved, "usage": usage_payload},
+                model=resolved,
             )
         except Exception:  # nosec B112  # noqa: BLE001, S112
             continue
