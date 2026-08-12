@@ -42,7 +42,7 @@ Notable source-aware skills:
 - `source_aware_whitebox` (coordination): white-box orchestration playbook
 - `source_aware_sast` (custom): semgrep/AST/secrets/supply-chain static triage workflow
 - `dependency_cve_scanning` (custom): trivy-based SCA workflow for reporting known dependency CVEs via `create_dependency_report`
-- `npx_confusion` (custom): npx binary-name fallback into unintended public package resolution
+- `npx_confusion` (custom): npx/bunx/dlx binary-name fallback into unintended public package resolution, with registry claimability controls and reporting gates
 - `advisory_to_poc` (custom): advisory-to-root-cause workflow for patch diffing, public PoCs, and detector design
 - `appliance_firmware` (technologies): appliance artifact, runtime, and install-state analysis
 - `protocol_reverse_engineering` (protocols): stateful/custom protocol reconstruction and safe harnessing
