@@ -52,6 +52,8 @@ Notable source-aware skills:
 - `browser_security` (vulnerabilities): browsing-context, postMessage, XS-Leaks, service-worker, and cross-origin state-machine testing
 - `azure` (cloud): Azure and Microsoft Entra privilege, PIM, workload identity, and cross-plane escalation analysis
 - `infrastructure_lifecycle` (reconnaissance): abandoned or mutable external dependencies such as update endpoints, MX, storage, and control domains
+- `argument_injection` (vulnerabilities): CLI/argv flag smuggling and argument splitting, including Windows Best-Fit (WorstFit) charset transformations that defeat prior escaping
+- `electron_desktop_apps` (vulnerabilities): Electron/web-tech desktop app renderer-to-native trust boundary, preload/IPC bridge exposure, and navigation-escape analysis
 
 ---
 

