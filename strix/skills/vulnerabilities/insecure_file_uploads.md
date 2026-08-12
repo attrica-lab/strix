@@ -28,13 +28,13 @@ Upload surfaces are high risk: server-side execution (RCE), stored XSS, malware 
 - Small probe files of each claimed type; diff resulting Content-Type, Content-Disposition, and X-Content-Type-Options on download
 - Magic bytes vs extension: JPEG/GIF/PNG headers; mismatches reveal reliance on extension or MIME sniffing
 - SVG/HTML probe: do they render inline (text/html or image/svg+xml) or download (attachment)?
-- Archive probe: in a disposable lab sandbox, use a small archive with a bounded traversal entry or symlink to detect extraction rules
+- Archive probe: simple zip with nested path traversal entries and symlinks to detect extraction rules
 
 ## Detection Channels
 
 ### Server Execution
 
-- Inert/no-op interpreter or template markers first; executable web shells or config/handler uploads (.htaccess, .user.ini, web.config) only when the requested test requires server execution
+- Web shell execution (language dependent), config/handler uploads (.htaccess, .user.ini, web.config) enabling execution
 - Interpreter-side template/script evaluation during conversion (ImageMagick/Ghostscript/ExifTool)
 
 ### Client Execution
@@ -69,12 +69,11 @@ Upload surfaces are high risk: server-side execution (RCE), stored XSS, malware 
 - Magic-byte spoofing: valid JPEG header then embedded script; verify server uses content inspection, not extensions alone
 - Detector/consumer differential: make the upload validator and the later parser disagree about type, structure, or validity
 - Probe detector scan windows, recursion/nesting limits, maximum bytes inspected, invalid-syntax recovery, and version-specific magic databases
-- Prefer ambiguous leading bytes or tightly bounded nesting over oversized files; deep nesting and scan-limit exhaustion are disposable-lab resource tests with byte/depth/time ceilings
 
 ### Archive Attacks
 
 - Zip Slip: entries with `../../` to escape extraction dir; symlink-in-zip pointing outside target; nested zips
-- Zip bomb: extreme compression ratios to exhaust processors; treat as an offline/disposable-lab DoS test with compressed/uncompressed byte, depth, CPU, memory, and time ceilings
+- Zip bomb: extreme compression ratios to exhaust resources in processors
 
 ### Toolchain Exploits
 
@@ -104,11 +103,11 @@ Upload surfaces are high risk: server-side execution (RCE), stored XSS, malware 
 ### Processing Races
 
 - Request file immediately after upload but before AV/CDR completes
-- Trigger bounded conversions in a disposable lab to study race windows; large images/deep PDFs are resource-exhaustion tests, not routine race probes
+- Trigger heavy conversions (large images, deep PDFs) to widen race windows
 
 ### Metadata Abuse
 
-- Oversized EXIF/XMP/IPTC blocks to trigger parser flaws only in an offline/disposable parser lab with explicit size and resource ceilings
+- Oversized EXIF/XMP/IPTC blocks to trigger parser flaws
 - Payloads in document properties of Office/PDF rendered by previewers
 
 ### Header Manipulation

@@ -169,7 +169,7 @@ Then inventory generic execution and influence surfaces:
 
 Do not require the malicious file to be directly web-accessible. An HTTP extension allowlist can block `/path/payload.ext` while an internal view engine, autoloader, or interpreter still opens and executes that file through a clean route. Trace public request filtering and internal file resolution as separate security boundaries.
 
-Test search order with syntax-valid non-executable/no-op marker files or filesystem traces in a tester-owned candidate path. Trigger the normal route/action that causes internal resolution. Record whether the framework creates, compiles, caches, or executes the artifact and what reload condition is required.
+Test search order with candidate marker files or filesystem traces. Trigger the normal route/action that causes internal resolution. Record whether the framework creates, compiles, caches, or executes the artifact and what reload condition is required.
 
 ## Testing Methodology
 
@@ -186,8 +186,8 @@ Test search order with syntax-valid non-executable/no-op marker files or filesys
 1. Show a minimal traversal read proving out-of-root access (e.g., `/etc/hosts`) with a same-endpoint in-root control
 2. For LFI, demonstrate inclusion of a benign local file or harmless wrapper output (`php://filter` base64 of index.php)
 3. For RFI, prove remote fetch by OAST or controlled output; avoid destructive payloads
-4. For Zip Slip, use an outer disposable lab sandbox and create an archive with `../` entries that writes a marker outside the inner extraction target
-5. For file-write chains, first prove a benign canary is created at the intended path, then prove the normal resolver loads it; document cache/reload requirements
+4. For Zip Slip, create an archive with `../` entries and show write outside target (e.g., marker file read back)
+5. For file-write chains, first prove a canary is created at the intended path, then prove the normal resolver loads it; document cache/reload requirements
 6. Provide before/after file paths, exact requests, and content hashes/lengths for reproducibility
 
 ## False Positives

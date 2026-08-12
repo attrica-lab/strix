@@ -122,7 +122,7 @@ The `X-Forwarded-*` family is informational — there is no protocol guarantee a
 - Trace which request fields survive the redirect: content type, handler, method, authorization result, path, and environment.
 - Test whether response metadata is reused as an internal handler, proxy target, template type, or interpreter selection.
 - Compare direct access controls with the internally dispatched resource. A protected URL may be unreachable directly while the same handler is invokable through a clean internal redirect.
-- Treat CRLF injection and response-controlling SSRF as possible inputs to this chain, then validate handler selection with a tester-created benign route or marker before using a privileged handler.
+- Treat CRLF injection and response-controlling SSRF as possible inputs to this chain, then validate handler selection before using a privileged handler.
 
 ### XSS via Response Headers
 

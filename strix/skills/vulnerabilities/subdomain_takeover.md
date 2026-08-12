@@ -122,14 +122,14 @@ TLS clues: certificate CN/SAN referencing provider default host instead of the c
 2. **Resolve DNS** - All RR types: A/AAAA, CNAME, NS, MX, TXT; keep CNAME chains
 3. **HTTP/TLS probe** - Capture status, body, error text, Server headers, certificate SANs
 4. **Fingerprint providers** - Map known "unclaimed/missing resource" signatures
-5. **Attempt claim** (only with written authorization and containment) - Create or bind the exact missing resource after determining whether doing so can receive existing third-party traffic
+5. **Attempt claim** (with authorization) - Create missing resource with exact required name
 6. **Validate control** - Serve minimal unique payload; confirm over HTTPS
 
 ## Validation
 
 1. Before: record DNS chain, HTTP response (status/body length/fingerprint), and TLS details
 2. After claim: serve unique content and verify over HTTPS at the target subdomain
-3. Confirm HTTPS/custom-domain control when it is required for the consumer; public DV issuance is a durable CT side effect and should be used only when explicitly authorized and necessary to establish claimability
+3. Optional: issue a DV certificate (legal scope) and reference CT entry as evidence
 4. Demonstrate impact chains (CSP/script-src trust, OAuth redirect acceptance, cookie Domain scoping)
 
 ## Severity
@@ -137,7 +137,7 @@ TLS clues: certificate CN/SAN referencing provider default host instead of the c
 - Score severity based on current claimability plus trusted-origin impact, not just a provider-branded error page
 - When evaluating severity, use `web_search` (if available) for the exact provider/product to confirm whether it now enforces subdomain takeover prevention such as TXT/custom-domain ownership verification or reserved-hostname protections; if search is unavailable, do not treat that absence as evidence that the provider prevents claiming
 - If you have positively confirmed the provider currently prevents third-party claiming and you cannot bypass that control, treat the finding as low severity rather than a confirmed takeover — an unconfirmed provider control is not grounds for downgrading
-- Reserve high/critical severity for cases where you can claim the resource or strongly prove claimability and show meaningful impact such as OAuth redirect abuse, cookie scope abuse, CSP trust, email receipt, or NS delegation control.
+- Reserve high/critical severity for cases where you can claim the resource or strongly prove claimability and show meaningful impact such as OAuth redirect abuse, cookie scope abuse, CSP trust, email receipt, or NS delegation control. E.g. Elastic Beanstalk takeovers are still generally legitimate.
 
 ## False Positives
 
@@ -159,7 +159,7 @@ TLS clues: certificate CN/SAN referencing provider default host instead of the c
 3. Prefer minimal PoCs: static "ownership proof" page and, where allowed, DV cert issuance
 4. Monitor CT for unexpected certs on your subdomains
 5. Eliminate dangling DNS in decommission workflows first
-6. For NS delegations, establish live delegation, registrability/control, accepted authoritative responses, and the affected namespace before assigning severity
+6. For NS delegations, treat any expired nameserver domain as critical
 7. Use CAA to limit certificate issuance while you triage
 
 ## Summary
