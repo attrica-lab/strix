@@ -52,7 +52,7 @@ Improper file path handling and dynamic inclusion enable sensitive file disclosu
 ### Capability Probes
 
 - Path traversal baseline: `../../etc/hosts` and `C:\Windows\win.ini`
-- Encodings: `%2e%2e%2f`, `%252e%252e%252f`, `..%2f`, `..%5c`, and Unicode lookalikes only where a documented conversion layer maps them to path syntax
+- Encodings: `%2e%2e%2f`, `%252e%252e%252f`, `..%2f`, `..%5c`; overlong UTF-8 (`%c0%2e`, `%c0%af`) and Unicode dot/slash lookalikes (`．`, `／`, `%u2215`) only where a conversion layer in the stack maps them to path syntax — send them, but only claim a bypass once you see the converted path in the response or logs
 - Normalization tests: `..../`, `..\\`, `././`, trailing dot/double dot segments; repeated decoding
 - Absolute path acceptance: `/etc/passwd`, `C:\Windows\System32\drivers\etc\hosts`
 - Server mismatch: `/static/..;/../etc/passwd` ("..;"), encoded slashes (`%2F`), double-decoding via upstream
@@ -82,7 +82,7 @@ Improper file path handling and dynamic inclusion enable sensitive file disclosu
 ### Path Traversal Bypasses
 
 **Encodings**
-- Single/double URL-encoding, mixed case, UTF-16 or Unicode conversion only when present in the stack, and path normalization oddities
+- Single/double URL-encoding, mixed case, and path normalization oddities; overlong UTF-8 and UTF-16/Unicode conversion (`%u002e`, `%c0%ae`) only when that conversion layer is present in the stack — IIS/legacy .NET, Java on Windows, and some CDN/WAF normalizers are the usual carriers
 
 **Mixed Separators**
 - `/` and `\\` on Windows; `//` and `\\\\` collapse differences across frameworks

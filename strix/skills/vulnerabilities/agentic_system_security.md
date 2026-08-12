@@ -120,6 +120,14 @@ Every skill, plugin, MCP server, model adapter, package, and update channel is a
 - transitive dependencies and lifecycle scripts
 - review/approval ownership and last verification date
 
+Agent and MCP configs (`.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`,
+`claude_desktop_config.json`, `devcontainer.json`) are the highest-risk
+instance of this: a `command: npx` with `-y` and a bare, unscoped package name
+is an unattended registry install of whatever that name resolves to, with no
+human in the loop. Enumerate every such entry and confirm who owns the name
+— `load_skill(["supply_chain_name_confusion"])` for the resolution proof and
+ownership/claimability gates.
+
 Test missing/private-name fallback, typosquatting exposure, mutable remote instructions, compromised-update blast radius, and whether an “instruction-only” component can invoke tools or modify executable files. Resolve `latest`, floating git refs, and mutable image tags to immutable versions or digests before launch. Do not claim or publish contestable package names as proof, and do not execute unknown packages just to discover what they are.
 
 Load `infrastructure_lifecycle` when a skill, plugin, MCP server, model adapter, tool-schema origin, package namespace, or update endpoint is retired, mutable, or externally reassignable. Passive receipt of an agent heartbeat or catalog request does not authorize returning tool definitions, prompts, commands, or executable content.

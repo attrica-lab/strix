@@ -106,13 +106,15 @@ The `X-Forwarded-*` family is informational — there is no protocol guarantee a
 - `X-Forwarded-For: 127.0.0.1` to bypass IP allowlists or rate limits keyed on client IP
 - `X-Forwarded-Proto: https` to satisfy "HTTPS-only" checks while still using HTTP
 - `X-Forwarded-Host: attacker.tld` for the Host-confusion variants above
-- `X-Real-IP`, `Client-IP`, `True-Client-IP`, `CF-Connecting-IP`, `Forwarded` (RFC 7239) — same trust class under different conventions; select evidence-supported variants for the observed proxy/CDN stack
+- `X-Real-IP`, `Client-IP`, `True-Client-IP`, `CF-Connecting-IP`, `Forwarded` (RFC 7239) — same trust class under different conventions; lead with the variants the observed proxy/CDN stack actually honors, but each one costs a single request, so spraying the whole list against an IP-gated endpoint is cheap
 - `X-Original-URL` / `X-Rewrite-URL` (IIS, ASP.NET) — server-side URL rewriting after auth check, classic admin-panel auth bypass
 
 ### Content-Type / Encoding Confusion
 
 - Inject `Content-Type: text/html` into an endpoint that returned JSON; browsers may sniff and render → XSS
+- Inject `charset=utf-7` in `Content-Type` for XSS via UTF-7-encoded payloads on legacy stacks that still honor it
 - Inject `Content-Disposition: inline` to switch a download into in-page rendering
+- Inject `Content-Encoding: gzip` without actually compressing — clients decode-fail and may reveal raw response bytes in error paths
 - *Absence* of `X-Content-Type-Options: nosniff` is what enables the sniffing attacks above; the header is a hardening control, not an attack surface — but if a server sets it inconsistently across endpoints, target the ones that don't
 - Compare MIME validators with browser parsing of duplicate or comma-joined `Content-Type` values. Record first/last valid member behavior and invalid-parameter recovery for each consumer.
 
