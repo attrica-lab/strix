@@ -7,7 +7,7 @@ description: Browser-internals security testing for browsing-context relationshi
 
 Use this skill when exploitability depends on browser behavior beyond a basic HTML injection. Model origins, browsing contexts, navigation history, workers, caches, router decoding, request metadata, and user activation as explicit state.
 
-Pair this skill with `xss`, `oauth`, `open_redirect`, `csrf`, or `semantic_confusion` when one of those is the primary vulnerability class. When the renderer is an Electron/web-tech desktop app with a preload/IPC bridge, load `electron_desktop_apps` — navigation and origin transitions there escalate to native capability, not just DOM access.
+Pair this skill with `xss`, `oauth`, `open_redirect`, `csrf`, or `semantic_confusion` when one of those is the primary vulnerability class. For an Electron renderer with a preload or IPC bridge, load `electron_desktop_apps` to analyze whether navigation and origin transitions reach native capability.
 
 ## Safety Boundary
 

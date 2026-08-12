@@ -10,12 +10,15 @@ Insecure deserialization passes attacker-controlled byte streams or structured b
 ## Attack Surface
 
 **Formats**
-- Java: Java native serialization, XStream, JSON → object mappers (Jackson, Fastjson), YAML (SnakeYAML), Hessian/Burlap, Kryo, RMI/JMX
+- Java: Java native serialization, XStream, JSON → object mappers (Jackson, Fastjson), YAML (SnakeYAML), Hessian/Burlap, Kryo
 - Python: `pickle`, `yaml.load` (unsafe), `marshal`, shelve
 - PHP: `unserialize()`, Phar deserialization
 - .NET: `BinaryFormatter`, `Json.NET TypeNameHandling`, ViewState
 - Ruby: `Marshal.load`, YAML.load
 - Node.js: `node-serialize`, `unserialize.js` (less common; see prototype_pollution for merge bugs)
+
+**Transports and Containers**
+- Java RMI/JMX, HTTP/RPC endpoints, messaging protocols, queues, signed wrappers, and product-specific binary envelopes can carry one or more formats above
 
 **Input Locations**
 - Cookies, session tokens, hidden form fields
@@ -58,30 +61,21 @@ yaml.load       readObject(     TypeNameHandling    Marshal.load
 ```
 When `enableDefaultTyping` or `@JsonTypeInfo` allows attacker-chosen types.
 
-**JNDI Injection (the modern Java pivot)**
+**JNDI Pivots from Object Construction**
 
-Many Java sinks do not run a classic ObjectInputStream gadget at all — they coerce a type whose deserialization triggers a **JNDI lookup** to an attacker-controlled URL, which returns a malicious object/factory. This is the mechanism behind `JdbcRowSetImpl`, Fastjson/Jackson polymorphic types, and Log4Shell-style lookups.
+JNDI injection is not itself a serialization format. It becomes part of this workflow when an attacker-selected type, setter, or gadget performs `Context.lookup()` during object construction or property population. `JdbcRowSetImpl` and some historical polymorphic JSON chains are examples; Log4j lookups reach JNDI through a different input path and should not be classified as deserialization.
 
-- Trigger types/fields: `dataSourceName`, `jndiName`, `namingURL`, any `Context.lookup()` on user data.
-- Endpoints: `ldap://`, `ldaps://`, `rmi://`, `dns://` (DNS is a safe no-exec reachability oracle).
-- Post-JEP-290/8u191 hardening blocks remote-codebase class loading, so modern exploitation returns a **local gadget** (e.g. a bean/`BeanFactory`/EL/Groovy invoker already on the classpath) via the LDAP reference instead of a remote class. Fingerprint the JDK/`trustURLCodebase` setting before choosing remote-class vs local-gadget.
-- Tooling: a JNDI exploit server (e.g. `marshalsec`/rogue-jndi style LDAP/RMI referral servers) — authorized testing only. Confirm reachability with a `dns://`/LDAP callback first.
+- Trace fields such as `dataSourceName`, `jndiName`, and `namingURL` into the exact lookup API and provider.
+- Record the accepted schemes/provider factories (`ldap`, `ldaps`, `rmi`, DNS URL context, or application-specific naming providers). A `dns://` value is not a universal oracle; it works only when the relevant DNS provider and lookup path are present.
+- Separate network lookup, remote object/reference processing, serialized LDAP attributes, remote codebase loading, and local object-factory invocation. Each is a different capability with different runtime controls.
+- JEP 290 filters incoming Java serialization graphs; it does not disable JNDI remote codebase loading. JNDI providers gained separate remote-class-loading and serialized-data controls across JDK updates, and current JDKs disable remote code downloading by default. Record the exact JDK build and relevant provider properties instead of using a single “modern Java” rule.
+- When remote class loading is unavailable, test whether the returned reference can reach a compatible **local** `ObjectFactory`, bean-property path, expression engine, script engine, or other class already present. Confirm exact class names, versions, module access, and trigger methods from the deployed classpath.
 
 **Hessian / Burlap**
 - Binary RPC formats deserialized by `HessianInput`/`Hessian2Input`. Attacker object graphs reach gadgets even though it is not native Java serialization.
-- Common in enterprise middleware and management endpoints reachable only after a proxy/path-confusion bypass — pair `semantic_confusion` when a front proxy is supposed to block the endpoint.
-- Typical chains land on the same local invokers below (`JdbcRowSet`→JNDI, `Resin`/`SpringPartiallyComparableAdvisorHolder`, etc.). `marshalsec` generates Hessian/Burlap payloads.
-
-**Local Gadget Invokers (when remote class loading is blocked)**
-
-After a JNDI/Hessian/JSON-typing primitive, exploitation depends on classes already present. Enumerate these generic invokers rather than a vendor-specific file list:
-
-- `org.springframework.beans.factory.support...BeanFactory` / `SimpleJndiBeanFactory`
-- `javax.el.ELProcessor` / EL evaluation beans
-- `groovy.lang.GroovyShell` / `GroovyClassLoader` and Groovy gadget classes
-- `com.sun.rowset.JdbcRowSetImpl` (JNDI), `org.apache.xbean...`, `org.apache.commons.configuration...`
-
-Match the invoker to the fingerprinted classpath; the presence of Spring/Groovy/Tomcat-EL on the path decides which one fires.
+- Treat serializer version, allowed type metadata, constructors/setters invoked, collection/comparator behavior, and classpath as independent prerequisites.
+- Pair `semantic_confusion` when a proxy or route policy is expected to make the RPC endpoint unreachable.
+- Inspect the exact deployed libraries rather than relying on generic gadget labels; similar-looking Spring, Resin, Tomcat, XBean, EL, or Groovy classes are not interchangeable.
 
 ### Python Pickle
 
@@ -187,8 +181,8 @@ When `TypeNameHandling` != `None`.
 3. Check cookies named `JSESSIONID` alternatives, `.ASPXAUTH`, `laravel_session`, custom tokens
 4. In white-box, trace from `readObject`/`unserialize`/`pickle.loads` backward to source
 5. ViewState MAC off is still common on legacy ASP.NET — test early on `.aspx` apps
-6. Modern Java rarely runs a remote-class gadget — expect JNDI-to-local-gadget; confirm reachability with `dns://`/LDAP before firing a chain
-7. A "blocked" enterprise deserialization endpoint may just need a proxy/path-confusion bypass to reach — pair `semantic_confusion`
+6. Model JNDI lookup, reference/object processing, remote codebase loading, and local factory invocation as separate stages
+7. A "blocked" enterprise deserialization endpoint may still be reachable through a proxy/path-normalization mismatch — pair `semantic_confusion`
 
 ## Tooling
 
@@ -199,7 +193,7 @@ Payload generation is the practitioner's core tool here. The sandbox has `git`/`
 | **ysoserial** (frohoff) | Java native | Gadget-chain payloads: `CommonsCollections1-7`, `Groovy1`, `Spring1/2`, and `URLDNS` for a safe no-exec DNS oracle. Needs a JRE. |
 | **phpggc** (ambionics) | PHP `unserialize` / Phar | Framework POP chains (Laravel, Symfony, WordPress, Drupal, Monolog). Needs `php-cli`. |
 | **ysoserial.net** | .NET `BinaryFormatter` / Json.NET | Windows/.NET gadget payloads. Needs .NET/mono — usually out of scope in a Linux sandbox. |
-| **marshalsec** | Java Hessian/Burlap, Kryo, JSON, and rogue JNDI (LDAP/RMI) referral servers | Generate non-native Java payloads and stand up a JNDI exploit server. Needs a JRE; authorized testing only. |
+| **marshalsec** | Java Hessian/Burlap, Kryo, JSON, and JNDI reference tooling | Use only from a reviewed, pinned upstream commit when a non-native Java marshaller requires it. It has no stable release and intentionally bundles historical gadget dependencies; do not treat it as a globally installed default tool. |
 
 ```
 # Java: prove the sink with a no-exec DNS oracle BEFORE any RCE chain

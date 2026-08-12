@@ -1,122 +1,157 @@
 ---
 name: argument-injection
-description: Argument injection and argument splitting testing for CLI/subprocess invocations, including flag/option smuggling, argv boundary breakout, response/config file abuse, and Windows Best-Fit (WorstFit) charset transformations that defeat prior escaping
+description: Test shell-free command argument injection across argv builders and CLI parsers, including option smuggling, response/config-file parsing, argument-boundary reparsing, and Windows Unicode-to-ANSI Best-Fit transformations
 ---
 
 # Argument Injection
 
-Use this skill when user-influenced data becomes part of a command's **argument vector**, not a shell string. This is distinct from classic command injection: there may be no shell, no metacharacters, and correct shell-escaping — yet the attacker still controls program behavior by injecting **additional flags/options** or by splitting one argument into several.
+Use this skill when attacker-influenced data reaches a trusted command-line program, even when no shell is involved. The security question is whether the input changes the program's **option set, operands, configuration, subcommand, or downstream parser state**.
 
-The core question is never "can I reach a shell?" It is: *does attacker input decide which options, files, or sub-actions a trusted binary performs?* Load `rce` when a shell metacharacter sink is present, and `semantic_confusion` when the injection arises from a normalization/encoding differential between the escaper and the argv consumer.
+Load `rce` when a shell parses the command string. Load `semantic_confusion` when validation and the final CLI/filesystem/configuration consumer see different representations.
 
-## Why It Is Missed
+## Model Every Parser Boundary
 
-- The code uses a safe API (`execve`, `subprocess.run([...])`, `ProcessBuilder`) with no shell, so command-injection checks pass.
-- Each individual argument is correctly quoted/escaped for the shell, but quoting does not stop a value that *starts with `-`* from being parsed as an option.
-- The input passes a WAF/validator in one representation, then a later layer (OS, C runtime, wide→ANSI conversion) rewrites it into argv-significant characters.
-
-## Attack Surface
-
-Look for any place a trusted binary is invoked with attacker-influenced values:
-
-- image/media processors: `convert`/ImageMagick, `ffmpeg`, `gs`/Ghostscript, `exiftool`
-- VCS and transfer tools: `git`, `svn`, `hg`, `curl`, `wget`, `scp`/`ssh`/`plink`, `rsync`
-- archive/crypto/db tools: `tar`, `zip`/`unzip`, `openssl`, `gpg`, `mysql`/`psql`, `sqlite3`
-- interpreters/runtimes launched as subprocesses: `php`, `php-cgi`, `python`, `node`, `java`
-- mail/report/PDF pipelines, LDAP/`ldapsearch`, `find`/`xargs`, and any `Open With`/handler registration
-- CGI/FastCGI query strings mapped onto interpreter argv (e.g. historical `php-cgi` `?-d`/`-s`)
-
-## Two Distinct Primitives
-
-### 1. Option/Flag Injection
-
-A value placed where a *positional* argument is expected but not prefixed-guarded is parsed as an option:
-
-- write primitives: `--output=`, `-o`, `-O`, `--config=`, `-K/--config`, `--upload-file`
-- read/exec primitives: `--exec`, `-c`, `-e`, `--use-compress-program=`, `--checkpoint-action=exec=`
-- behavior toggles: `--insecure`, `--no-check-certificate`, `-proxy`, `--interactive`
-
-Representative generic PoCs (validate on the specific tool/version — flag names vary):
+Build the actual transformation chain:
 
 ```text
-# curl: turn a fetched "URL" into a file write / local file read
--o/tmp/pwn            # write response to a chosen path
-file:///etc/passwd    # scheme downgrade when scheme is not pinned
-
-# tar: classic exec via checkpoint action
---checkpoint=1 --checkpoint-action=exec=sh\ shell.sh
-
-# git: option-controlled config / hook / upload-pack
--c core.sshCommand=... ext::sh\ -c\ ...
+request value
+  -> application validation
+  -> argv builder or command-line string serializer
+  -> OS/process creation API
+  -> runtime argv construction
+  -> target option parser
+  -> response/config/auth file parser, URL parser, or subcommand
 ```
 
-### 2. Argument Splitting
+Do not treat all process APIs alike:
 
-One intended argument becomes several because a separator survives escaping:
+- POSIX `execve(path, argv, envp)` and list-form subprocess APIs preserve array-element boundaries. Whitespace inside one element does not create another argument.
+- Shell/string forms introduce shell tokenization before the target program sees `argv`.
+- Windows process creation commonly serializes an argument array into one command-line string and lets the child runtime parse it back. Quoting rules differ across CRTs and applications.
+- Some programs deliberately reparse an argument as a response file, configuration file, URL, expression, template, or nested command language.
 
-- whitespace, `\t`, newline, or NUL that the escaper missed
-- quoting that the argv builder collapses differently than the validator expected
-- an OS/runtime transformation that *introduces* a separator (see Best-Fit below)
+Record the exact API, platform, runtime, target binary/version, option parser, and final `argv` observed by the child.
 
-The result: `["tool", "user-value"]` becomes `["tool", "user", "--evil"]`.
+## Primitive 1: Option and Subcommand Injection
 
-## Windows Best-Fit / "WorstFit" Charset Transformation
+An attacker-controlled value placed where an operand is expected can be interpreted as an option when it begins with an option prefix:
 
-A critical, widely-missed argument-injection amplifier on Windows. ANSI (`*A`) APIs convert UTF-16 to the process code page using **Best-Fit mapping**, which silently rewrites Unicode look-alikes into argv-significant ASCII *after* validation and escaping have run.
+```text
+intended: ["tool", USER_VALUE]
+supplied: USER_VALUE = "--output=/controlled/path"
+actual:   tool parses an output option instead of an operand
+```
 
-Affected APIs (any of these can undo prior sanitization):
+Inventory security-relevant option classes rather than memorizing one payload:
 
-- `GetCommandLineA`, `CommandLineToArgvA`-style parsing, `__argv`/`main(argc, argv)` in ANSI builds
-- `GetEnvironmentVariableA`, `getenv`, `GetCurrentDirectoryA`, `getcwd`
-- `FindFirstFileA`/`FindNextFileA` and other `*A` filesystem calls
+- output, upload, extraction, log, cache, plugin, template, or configuration paths
+- alternate URL schemes, proxies, certificates, credentials, and authentication files
+- hooks, helpers, filters, interpreters, external programs, or dynamic libraries
+- config overrides, environment definitions, working directories, and search paths
+- subcommands that expose administrative, import/export, restore, diagnostic, or execution features
 
-Best-Fit turns benign-looking Unicode into delimiters/flags depending on code page:
+Check whether the target supports `--` as an end-of-options marker and whether the application places it before the untrusted operand. Do not assume every CLI honors `--`, or that it applies after a subcommand switches to a second parser.
 
-| Attacker sends (Unicode) | Best-Fit result | Effect |
-|---|---|---|
-| U+00AD soft hyphen | `-` | injects an option where `-` was filtered |
-| U+FF0F fullwidth solidus, ¥/₩ (yen/won) | `/` or `\` | path traversal / flag separators |
-| U+2033, fullwidth quotes | `"` | breaks out of a quoted argv segment |
-| various fullwidth/look-alike letters | ASCII letters | reconstruct filtered keywords |
+## Primitive 2: Argument-Boundary Breakout
 
-Consequences seen in research: PHP-CGI argument-injection bypass via soft hyphen, path traversal via yen/won/fullwidth slash, argv splitting despite prior escaping, and env/path confusion in CGI. The invariant: **the bytes validated are not the bytes the program parses.**
+Require a component that reparses or reconstructs arguments. Candidate boundaries include:
 
-## Detection and Recon
+- shell or command-string construction
+- Windows quoting/escaping mismatches between parent and child runtimes
+- newline-, NUL-, delimiter-, or quote-sensitive custom launchers
+- wrappers that join an array and later split it
+- CGI/interpreter mappings that turn request data into command-line options
 
-- Source review: find every `subprocess`/`exec*`/`ProcessBuilder`/`os.popen`/backtick site and check whether any argument is attacker-influenced and whether a leading-`-` guard or `--` terminator precedes it.
-- Black-box: submit values beginning with `-`/`--`, embedding whitespace/newline/NUL, and (on Windows targets) Unicode look-alikes for `- / \ "`. Diff behavior, output location, timing, and error text against a clean baseline.
-- CGI/interpreter surfaces: probe whether query strings without `=` reach interpreter argv (historical `php-cgi` `?-s`, `?-d allow_url_include=1`).
-- Prefer a benign, observable primitive first (write a canary to a tester-owned path, add a no-op flag that changes output verbosity) before any exec flag.
+Distinguish these outcomes:
 
-## Safe Validation
+```text
+["tool", "user --flag"]       # one argv element; no split by execve
+["tool", "user", "--flag"]  # extra argv element reached the target
+["tool", "@args.txt"]        # one element, then reparsed by the target
+```
 
-1. Prove input crosses the argv boundary: show the same value parsed as an option/extra arg vs. treated as a literal positional (paired control).
-2. Use the least powerful demonstrable primitive — a verbose/version flag or a write to a tester-owned path — not remote code execution, unless RCE proof is explicitly authorized and contained.
-3. For Best-Fit, capture both the submitted Unicode bytes and the ANSI bytes the process actually parsed (e.g. via a logging shim or the tool's own echo of argv), and record the code page.
-4. Reproduce on the deployed tool/runtime version; flag names, Best-Fit tables, and CGI behavior are version- and code-page-specific.
+Logs often render arrays as strings and can falsely suggest splitting. Capture the child's real arguments through source instrumentation, a wrapper process, debugger, audit trace, `/proc/<pid>/cmdline`, or the platform equivalent.
 
-## Defenses (for remediation notes)
+## Primitive 3: Response, Config, and Authentication Files
 
-- Prefix untrusted positional values with `--` (end-of-options) where the tool supports it, or hard-pin every option yourself.
-- Reject or normalize leading `-`, whitespace, and NUL in values destined for argv.
-- On Windows, use wide-character APIs (`wmain`, `GetCommandLineW`, `*W` calls) and avoid ANSI/Best-Fit conversion entirely.
-- Never build argv from user input for security-relevant flags (output paths, config, exec/hook options); pass those as fixed literals.
+Many trusted programs consume a second language after argv parsing:
+
+- `@response-file` syntax used by compilers, linkers, JVM tooling, and custom launchers
+- `--config`, `-K`, credentials/auth files, include files, and rc/profile paths
+- newline-delimited key/value files generated from attacker-controlled fields
+- file contents where control characters create a new directive, identity, host, or option
+
+Trace both attacker influence over the **file path** and influence over the **file content**. Correct shell quoting does not protect a file that is later tokenized by a different grammar. Record duplicate-key behavior, newline rules, comments, escaping, include directives, and first/last-value precedence.
+
+## Windows Unicode-to-ANSI Best-Fit
+
+On Windows, narrow-character APIs and CRT startup paths can convert Unicode command-line, environment, or filesystem data into an ANSI code page. Best-Fit mappings may introduce ASCII characters after earlier validation.
+
+Relevant boundaries include:
+
+- `GetCommandLineA` or a narrow `main(int, char **)` startup path
+- `GetEnvironmentVariableA`, `GetCurrentDirectoryA`, and narrow filesystem APIs
+- framework or native-extension transitions from UTF-16 strings to an ANSI code page
+
+`CommandLineToArgvW` is the documented Windows command-line parser; there is no documented `CommandLineToArgvA`. Determine which CRT or application-specific parser constructs narrow `argv`.
+
+Treat mappings as code-page-specific hypotheses, not universal payloads. Candidate transformations include soft hyphen to `-`, fullwidth/compatibility slash characters to `/` or `\`, and compatibility quotes or letters to ASCII equivalents. Capture:
+
+- submitted Unicode code points and encoded bytes
+- active system/process code page
+- wide string before conversion
+- narrow bytes and final `argv` or filesystem path after conversion
+
+Using wide-character APIs removes this particular conversion boundary but does not fix ordinary option injection.
+
+## Reconnaissance
+
+In source, locate process creation and work forward into the consumer:
+
+```text
+exec*  posix_spawn  subprocess  ProcessBuilder  Runtime.exec
+CreateProcess  ShellExecute  child_process  os/exec  Command
+```
+
+For each attacker-controlled argument, answer:
+
+1. Is it a distinct argv element or part of a command string?
+2. Can it begin with the target's option prefix?
+3. Is an end-of-options marker supported and correctly positioned?
+4. Does a wrapper, CRT, shell, or target reparse it?
+5. Can it select a response/config/auth file or inject directives into one?
+6. Which target option or subcommand turns that control into read, write, request, identity, or execution capability?
+
+For black-box testing, compare an ordinary operand with option-prefixed, delimiter-bearing, control-character, and platform-specific Unicode variants. Match tests to options that actually exist in the deployed binary/version.
+
+## Validation
+
+- Show the final `argv` or secondary parser input, not only the application log line.
+- Pair the candidate with a control where the same bytes remain a literal operand.
+- Demonstrate the exact option, directive, subcommand, path, or handler selected.
+- Reproduce against the deployed binary, runtime, code page, and configuration.
+- Separate option control, additional-argument control, arbitrary directive control, and command execution; they are different primitives.
 
 ## False Positives
 
-- Value is attacker-influenced but the code inserts `--` before it, or validates a strict allowlist (numeric/UUID/enum) that cannot start with `-`.
-- A separator appears in logs but the argv builder passes the whole value as one element (verify the real `argv`, not the log line).
-- A Unicode character is accepted but the target uses `*W` APIs, so no Best-Fit conversion occurs.
-- The injected flag exists but has no security-relevant effect on this tool/version.
+- The input is one argv element and the target treats it only as a positional operand.
+- `--` is supported, placed before the value, and not bypassed by a subparser.
+- A strict allowlist prevents option prefixes and all later transformations preserve it.
+- A delimiter appears only in logging or display formatting.
+- A response/config path is controllable but its contents or directives are not.
+- A Unicode character is accepted but no narrow/Best-Fit conversion occurs.
+- The injected option exists on another release or platform but not the deployed target.
 
-## Pro Tips
+## Remediation
 
-1. The tell is a trusted binary + user-controlled argument, even with no shell and perfect quoting.
-2. Always test a value that simply *starts with a dash*; it is the highest-signal, lowest-effort probe.
-3. On Windows, treat `*A` APIs as an escaping-bypass primitive, not a cosmetic detail — Best-Fit runs after your validation.
-4. Generalize findings by the primitive class (write / read / exec / behavior toggle), not by the specific flag string.
-5. CGI query strings that reach an interpreter's argv are argument injection, not "just LFI."
+- Use argument-array process APIs and avoid shell/string construction.
+- Insert `--` before untrusted operands where every relevant parser supports it.
+- Validate operands against the target CLI's grammar, not a generic shell blacklist.
+- Fix security-sensitive option names and configuration paths in trusted code.
+- Generate configuration/auth files with a format-aware serializer that rejects control characters and ambiguous duplicates.
+- On Windows, keep data in wide-character APIs and verify child-runtime parsing rules.
+- Enforce authorization again at the privileged operation selected by the CLI.
 
 ## Summary
 
-Argument injection is control of a program's argument vector without needing a shell. Model where untrusted data enters `argv`, test for option smuggling and argument splitting, and remember that Windows Best-Fit conversion can reintroduce `- / \ "` after every validation step. Prove the argv boundary crossing with a paired control and the least powerful primitive.
+Argument injection is control of a trusted program's behavior through its argv or a parser reached from argv. Preserve parser boundaries in the model: list-form execution, command-string tokenization, Windows runtime conversion, option parsing, and response/config-file parsing are distinct stages with distinct exploit conditions.

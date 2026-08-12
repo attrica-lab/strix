@@ -69,15 +69,12 @@ Record signature, hash, certificate, pinning, version/rollback, and content-type
 
 Do not register or publish candidate names merely to test them without explicit authorization and a containment plan. Prove the consumer's resolution behavior first.
 
-Registry "missing" responses are not interchangeable with "claimable". On npm,
-a `404` name can still be unregisterable (the punctuation-stripping moniker
-rule blocks names that collide with an existing package once `.`/`-`/`_` are
-removed), and a `200` may be an npm `0.0.1-security` holding stub that nobody
-else can take. `load_skill(["supply_chain_name_confusion"])` for the npm/npx
-resolution order, the non-destructive `npx --no` reachability proof, and the
-full registry-status matrix; the same shape applies to `uvx`/`pipx run` on
-PyPI (distribution name vs `console_scripts` name), implicit
-`docker.io/library/<image>`, and `uses: org/repo@ref` after an org rename.
+Registry "missing" responses are not interchangeable with "claimable".
+Similarity, reservation, security-hold, dispute, and unpublish rules can block
+a name that returns `404`; verify ownership and registry policy separately.
+Load `npx_confusion` when the consumer first treats a missing executable as an
+npm package spec. Model other ecosystems independently rather than assuming
+npm's resolution order applies to them.
 
 ### Mail and Identity
 
@@ -212,7 +209,7 @@ Include:
 - Update content is independently signed and the reassigned endpoint cannot produce an accepted artifact; this usually blocks forged-code impact, but metadata exposure, update suppression, unsigned manifest fields, and rollback/version behavior still require analysis.
 - Expired domain appears in documentation but is absent from authentication, mail, software, and deployed configuration.
 - A package name is unregistered but the consumer is pinned to a private registry with no public fallback, the scope is routed by `.npmrc`, or the command is already satisfied by a locally installed binary.
-- The name is unregistered but unregisterable: blocked by a registry similarity/moniker rule, held by a registry-owned security placeholder, or reserved after an unpublish.
+- The name is unregistered but registry policy, reservation, dispute, or unpublish state prevents the contested registration.
 - Inbound sensor traffic cannot be attributed to an in-scope consumer/version.
 
 ## Remediation

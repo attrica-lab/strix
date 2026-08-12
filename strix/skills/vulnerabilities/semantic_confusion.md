@@ -83,9 +83,9 @@ The highest-signal condition is `security_check(value_A)` followed by `sink(tran
 
 - Identify names resolved across multiple scopes: local path, environment `PATH`, cache, private registry, public registry, plugin directory, template search path, or autoloader.
 - Record lookup order and what happens when the intended entry is missing.
-- Compare protected package/module names with exposed command, binary, handler, or alias names. A scoped npm package cannot put `/` in a `bin` key, so `@org/foo-tool` ships the unscoped command `foo-tool` — the protected name and the invoked name differ by construction.
+- Compare protected package/module names with exposed command, binary, handler, or alias names. For npm, a scoped package can expose an unscoped `bin` name, so the protected package name and invoked executable may differ.
 - Treat automatic remote fallback or search-path fallback as an execution boundary.
-- Load `supply_chain_name_confusion` when the mismatched representation is a package/command name resolved from a registry; it carries the resolution-order proof and ownership gates for that case.
+- Load `npx_confusion` when `npx` or `npm exec` may reinterpret a missing executable as a public package spec.
 
 ## Reconnaissance
 

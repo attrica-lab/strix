@@ -129,14 +129,12 @@ In repositories with developer tooling, plugins, templates, or package runners, 
 
 Record candidate names and verify ownership/existence without claiming or publishing them. A namespace gap is reportable only when the target actually resolves or executes the attacker-contestable name under realistic conditions.
 
-For the npm/JavaScript case this is decidable without publishing anything —
-`npx --no <cmd>` in a clean directory prints the exact registry URL npm would
-fetch, and the same command in the repo after `npm ci` shows whether
-`node_modules/.bin` already satisfies it. `load_skill(["supply_chain_name_confusion"])`
-for the full workflow (npx/bunx/`dlx` fallback, scoped-package `bin` mismatch,
-internal/`workspace:` deps, MCP configs) and its registry-status and
-claimability gates. Trivy cannot see any of this: the dependency is not
-vulnerable, the name resolution is.
+For npm/JavaScript, distinguish the package name from the executable name and
+model the actual working directory, dependency tree, global bin directory,
+cache, and registry configuration. `load_skill(["npx_confusion"])` when a bare
+`npx`/`npm exec` command may fall back from a missing executable to a public
+package. Trivy cannot detect this class because no installed package version
+needs to be vulnerable.
 
 Load `infrastructure_lifecycle` when source, images, firmware, or history contain abandoned domains, provider resources, package namespaces, update URLs, mail identities, telemetry, or control endpoints. Use targeted string/dataflow analysis when this is the research question; the full baseline scanner bundle is not required merely to trace one endpoint consumer.
 

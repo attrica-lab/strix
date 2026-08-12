@@ -120,13 +120,11 @@ Every skill, plugin, MCP server, model adapter, package, and update channel is a
 - transitive dependencies and lifecycle scripts
 - review/approval ownership and last verification date
 
-Agent and MCP configs (`.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`,
-`claude_desktop_config.json`, `devcontainer.json`) are the highest-risk
-instance of this: a `command: npx` with `-y` and a bare, unscoped package name
-is an unattended registry install of whatever that name resolves to, with no
-human in the loop. Enumerate every such entry and confirm who owns the name
-— `load_skill(["supply_chain_name_confusion"])` for the resolution proof and
-ownership/claimability gates.
+In agent and MCP configs, inspect `command: npx` with `-y` and a bare package or
+binary name. The process can fetch code without an interactive prompt and then
+run it with the agent's authority. Load `npx_confusion` to determine whether the
+name resolves locally, becomes a public package spec, and belongs to the
+intended publisher.
 
 Test missing/private-name fallback, typosquatting exposure, mutable remote instructions, compromised-update blast radius, and whether an “instruction-only” component can invoke tools or modify executable files. Resolve `latest`, floating git refs, and mutable image tags to immutable versions or digests before launch. Do not claim or publish contestable package names as proof, and do not execute unknown packages just to discover what they are.
 
