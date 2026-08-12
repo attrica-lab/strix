@@ -42,6 +42,14 @@ Notable source-aware skills:
 - `source_aware_whitebox` (coordination): white-box orchestration playbook
 - `source_aware_sast` (custom): semgrep/AST/secrets/supply-chain static triage workflow
 - `dependency_cve_scanning` (custom): trivy-based SCA workflow for reporting known dependency CVEs via `create_dependency_report`
+- `advisory_to_poc` (custom): advisory-to-root-cause workflow for patch diffing, public PoCs, and detector design
+- `appliance_firmware` (technologies): appliance artifact, runtime, and install-state analysis
+- `protocol_reverse_engineering` (protocols): stateful/custom protocol reconstruction and safe harnessing
+- `semantic_confusion` (vulnerabilities): cross-boundary parser, normalization, and representation mismatch analysis
+- `memory_corruption` (vulnerabilities): native crash triage, primitive quality, and exploitability constraints
+- `agentic_system_security` (vulnerabilities): effective-authority and MCP/tool ecosystem security testing
+- `azure` (cloud): Azure and Microsoft Entra privilege, PIM, workload identity, and cross-plane escalation analysis
+- `infrastructure_lifecycle` (reconnaissance): abandoned or mutable external dependencies such as update endpoints, MX, storage, and control domains
 
 ---
 

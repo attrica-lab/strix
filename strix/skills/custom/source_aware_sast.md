@@ -105,6 +105,32 @@ tree-sitter parse -q <file>
 
 Use outputs to improve route/symbol/sink maps for subsequent targeted scans.
 
+## Cross-Component Semantic Mapping
+
+Pattern scanners find local sinks but often miss a security decision in one component followed by a different interpretation in another. For complex middleware, proxies, frameworks, and plugin systems:
+
+1. Identify shared request/context fields and every writer/reader.
+2. Order the readers and writers by lifecycle phase: parse, route, authenticate, rewrite, authorize, dispatch, render.
+3. Mark fields whose semantic type changes (URL/path, MIME/handler, alias/package, external/internal route).
+4. Trace normal, error, retry, subrequest, and internal-redirect paths separately.
+5. Compare the representation checked by security code with the representation consumed by the final sink.
+
+Load `semantic_confusion` when this graph reveals overloaded fields, multiple parsers, normalization steps, or protocol translation.
+
+## Resolution and Namespace Risks
+
+In repositories with developer tooling, plugins, templates, or package runners, inspect lookup order rather than only dependency versions:
+
+- command runners that fall back from local binaries or `PATH` to a public registry
+- scoped/private package names exposing unscoped binary or alias names
+- plugin, template, module, and autoload search paths writable by a lower-privileged actor
+- CI/composite actions and devcontainer/bootstrap scripts that transitively execute package commands
+- missing local artifacts that silently activate a remote or broader fallback
+
+Record candidate names and verify ownership/existence without claiming or publishing them. A namespace gap is reportable only when the target actually resolves or executes the attacker-contestable name under realistic conditions.
+
+Load `infrastructure_lifecycle` when source, images, firmware, or history contain abandoned domains, provider resources, package namespaces, update URLs, mail identities, telemetry, or control endpoints. Use targeted string/dataflow analysis when this is the research question; the full baseline scanner bundle is not required merely to trace one endpoint consumer.
+
 ## Secret and Supply Chain Coverage
 
 Detect hardcoded credentials:

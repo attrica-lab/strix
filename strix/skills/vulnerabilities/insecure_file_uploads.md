@@ -28,13 +28,13 @@ Upload surfaces are high risk: server-side execution (RCE), stored XSS, malware 
 - Small probe files of each claimed type; diff resulting Content-Type, Content-Disposition, and X-Content-Type-Options on download
 - Magic bytes vs extension: JPEG/GIF/PNG headers; mismatches reveal reliance on extension or MIME sniffing
 - SVG/HTML probe: do they render inline (text/html or image/svg+xml) or download (attachment)?
-- Archive probe: simple zip with nested path traversal entries and symlinks to detect extraction rules
+- Archive probe: in a disposable lab sandbox, use a small archive with a bounded traversal entry or symlink to detect extraction rules
 
 ## Detection Channels
 
 ### Server Execution
 
-- Web shell execution (language dependent), config/handler uploads (.htaccess, .user.ini, web.config) enabling execution
+- Inert/no-op interpreter or template markers first; executable web shells or config/handler uploads (.htaccess, .user.ini, web.config) only when the requested test requires server execution
 - Interpreter-side template/script evaluation during conversion (ImageMagick/Ghostscript/ExifTool)
 
 ### Client Execution
@@ -67,11 +67,14 @@ Upload surfaces are high risk: server-side execution (RCE), stored XSS, malware 
 
 - Double extensions: avatar.jpg.php, report.pdf.html; mixed casing: .pHp, .PhAr
 - Magic-byte spoofing: valid JPEG header then embedded script; verify server uses content inspection, not extensions alone
+- Detector/consumer differential: make the upload validator and the later parser disagree about type, structure, or validity
+- Probe detector scan windows, recursion/nesting limits, maximum bytes inspected, invalid-syntax recovery, and version-specific magic databases
+- Prefer ambiguous leading bytes or tightly bounded nesting over oversized files; deep nesting and scan-limit exhaustion are disposable-lab resource tests with byte/depth/time ceilings
 
 ### Archive Attacks
 
 - Zip Slip: entries with `../../` to escape extraction dir; symlink-in-zip pointing outside target; nested zips
-- Zip bomb: extreme compression ratios to exhaust resources in processors
+- Zip bomb: extreme compression ratios to exhaust processors; treat as an offline/disposable-lab DoS test with compressed/uncompressed byte, depth, CPU, memory, and time ceilings
 
 ### Toolchain Exploits
 
@@ -101,11 +104,11 @@ Upload surfaces are high risk: server-side execution (RCE), stored XSS, malware 
 ### Processing Races
 
 - Request file immediately after upload but before AV/CDR completes
-- Trigger heavy conversions (large images, deep PDFs) to widen race windows
+- Trigger bounded conversions in a disposable lab to study race windows; large images/deep PDFs are resource-exhaustion tests, not routine race probes
 
 ### Metadata Abuse
 
-- Oversized EXIF/XMP/IPTC blocks to trigger parser flaws
+- Oversized EXIF/XMP/IPTC blocks to trigger parser flaws only in an offline/disposable parser lab with explicit size and resource ceilings
 - Payloads in document properties of Office/PDF rendered by previewers
 
 ### Header Manipulation
@@ -120,6 +123,8 @@ Upload surfaces are high risk: server-side execution (RCE), stored XSS, malware 
 - Client-side only checks; relying on JS/MIME provided by browser
 - Trusting multipart boundary part headers blindly
 - Extension allowlists without server-side content inspection
+- One parser validates metadata or leading bytes while another parser processes the full file
+- Type-detection wrappers assumed identical even when they bundle different library/database versions
 
 ### Evasion Tricks
 
@@ -146,8 +151,9 @@ Upload surfaces are high risk: server-side execution (RCE), stored XSS, malware 
 1. **Map the pipeline** - Client → ingress → storage → processors → serving. Note where validation and auth occur
 2. **Identify allowed types** - Size limits, filename rules, storage keys, and who serves the content
 3. **Collect baselines** - Capture resulting URLs and headers for legitimate uploads
-4. **Exercise bypass families** - Extension games, MIME/content-type, magic bytes, polyglots, metadata payloads, archive structure
-5. **Validate execution** - Can uploaded content execute on server or client?
+4. **Map validators and consumers** - Identify the detector/library/version when possible and every later parser, converter, renderer, or browser context
+5. **Exercise bypass families** - Extension games, MIME/content-type, magic bytes, parser limits, polyglots, metadata payloads, archive structure
+6. **Validate execution** - Prove the accepted object reaches a more privileged consumer and can execute or render active content
 
 ## Validation
 
@@ -182,6 +188,7 @@ Upload surfaces are high risk: server-side execution (RCE), stored XSS, malware 
 8. When you cannot get execution, aim for stored XSS or header-driven script execution
 9. Validate that CDNs honor attachment/nosniff
 10. Document full pipeline behavior per asset type
+11. Reproduce detector/consumer mismatches on the deployed library versions; OS packages and language bindings may ship different limits
 
 ## Summary
 

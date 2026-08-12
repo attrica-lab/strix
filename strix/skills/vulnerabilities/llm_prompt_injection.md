@@ -7,6 +7,8 @@ description: Testing LLM-backed features for prompt injection, jailbreaks, syste
 
 Applications that pass untrusted input into an LLM prompt are vulnerable to prompt injection: attacker-controlled text overrides developer instructions, leaks the system prompt, abuses connected tools, or exfiltrates data. Treat every LLM feature as a confused-deputy: the model has the app's privileges (tools, RAG data, API keys) but cannot reliably tell instructions from data. Impact is defined by what the model can *do*, not just what it can *say*.
 
+When the system can invoke MCP servers, plugins, skills, delegated agents, or consequential tools, also load `agentic_system_security` to model effective authority, target-side authorization, executable component supply chain, and repeatable safety regression. This skill remains focused on instruction/data confusion and unsafe model output.
+
 ## Attack Surface
 
 **Direct Injection**
