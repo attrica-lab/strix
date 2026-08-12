@@ -8,7 +8,7 @@
   "enabledManagers": [
     "npm",
     "github-actions",
-    "docker",
+    "dockerfile",
     "pep621"
   ],
   "packageRules": [
@@ -22,7 +22,7 @@
     {
       "matchManagers": [
         "github-actions",
-        "docker"
+        "dockerfile"
       ],
       "pinDigests": true
     }
