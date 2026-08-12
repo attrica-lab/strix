@@ -1,29 +1,33 @@
 ---
 name: npx-confusion
-description: Test npx, npm exec, bunx, and dlx binary-name confusion where a missing local executable is reinterpreted as a public npm package name, including scoped-package bin mismatches, CI and agent invocations, resolution-context analysis, registry claimability verification, and false-positive elimination
+description: Test package and executable identity confusion in npx, npm exec, and bunx fallback, plus explicit auto-fetch runners such as pnpm/yarn dlx and deno run npm:, with runner-specific resolution analysis, registry-state controls, reporting gates, and false-positive elimination
 ---
 
 # npx Confusion
 
-Use this skill when a target invokes a bare command through `npx`, `npm exec`, `bunx`, or `pnpm`/`yarn dlx` and the intended executable name may differ from the package that provides it. This is narrower than classic dependency confusion: the issue is the transition from **unresolved binary name** to **remotely fetched package spec**.
+Use this skill when a package runner may execute code from a package other than the publisher or package the workflow intended. For `npx`, `npm exec`, and `bunx`, the recurring case is a missing local executable being reinterpreted as a remotely fetched package spec. Explicit auto-fetch runners such as `pnpm dlx`, `yarn dlx`, and `deno run npm:` have different semantics; analyze them as an adjacent package-identity problem rather than pretending they share npm's fallback order.
 
 Load `dependency_cve_scanning` for known vulnerable versions, `infrastructure_lifecycle` for abandoned domains or registry resources, `agentic_system_security` for the authority of an MCP/agent process, and `semantic_confusion` for the general lookup-order model.
 
 ## Core Condition
 
-Require all of the following:
+Choose the branch that matches the runner.
 
-1. A target-controlled workflow invokes `npx <name>`, `npx -y <name>`, or an equivalent auto-installing runner: `npm exec`, `bunx`, `pnpm dlx`, `yarn dlx`, or `deno run npm:<name>`. Each fetches a package named after the command when it is not already available; confirm the specific runner's own resolution order rather than assuming npm's.
-2. `<name>` is not resolved as an executable in the workflow's real local/global context.
-3. npm consequently interprets `<name>` as a package spec and consults the configured registry.
-4. The resolved public name is unintended, unregistered, or controlled by a party other than the intended publisher.
-5. The affected workflow actually reaches the fetched package's executable.
+For local-first fallback (`npx`, `npm exec`, or `bunx`), require all of the following:
+
+1. A target-controlled workflow invokes a bare executable or ambiguous package token.
+2. The intended package and its executable name differ, or other evidence establishes the expected publisher/package.
+3. The executable is not resolved in the workflow's real local, workspace, global, or cache context as applicable to that runner.
+4. The runner consequently selects an unintended remote package spec from its configured registry.
+5. The affected workflow reaches that package's executable with security-relevant authority.
+
+For explicit auto-fetch runners (`pnpm dlx`/`pnx`/`pnpx`, `yarn dlx`, or `deno run npm:`), do not require or claim a missing-local-binary fallback. Require evidence that the command names or infers a package different from the one the workflow intended, such as a scoped-package/bin mismatch, typo, generated configuration error, or wrong publisher. Then prove the exact fetched package, chosen binary/module, execution path, and inherited authority.
 
 A public package merely being outside the target's ownership is not a vulnerability. Third-party packages are normal; the mismatch between intended executable provenance and actual registry resolution is the finding.
 
 ## Resolution Model
 
-Record the npm version because `npx` has used `npm exec` since npm 7 and resolver behavior changes between releases. For current npm, model these decisions:
+Record the npm version because `npx` has used `npm exec` since npm 7 and resolver behavior changes between releases. For npm, model these decisions:
 
 ```text
 bare command
@@ -47,6 +51,20 @@ Also record:
 - npm's executable-inference result when the package exposes zero, one, or several `bin` entries
 
 Do not collapse package-name lookup and bin selection into one step. npm can fetch a manifest yet fail because it cannot infer exactly one executable.
+
+### Runner distinctions
+
+Record the exact runner and version. Do not reuse npm's local/global/cache ordering for another implementation.
+
+| Runner | Resolution behavior to model | Package binding / fetch control |
+|---|---|---|
+| `npx` / `npm exec` | Local/workspace/global/cache resolution followed by package-spec fallback; executable inference depends on `package.json#bin` | `--package <pkg>` binds the provider; `--no` rejects an install prompt |
+| `bunx` | Checks a locally installed package, then can install from npm into Bun's cache | `--package <pkg>` binds the provider; `--no-install` forbids installation |
+| `yarn dlx` | Downloads the command-named package into a temporary environment by default; this is not a local-bin fallback | `--package <pkg>` selects a different provider package |
+| `pnpm dlx` / `pnx` / `pnpx` | Fetches and hotloads a registry package, then runs its default binary; project trust policies are version-dependent | `--package=<pkg>` selects the provider; prefer declared dependencies plus `pnpm exec` when remote fetch is unintended |
+| `deno run npm:<pkg>` | Uses an explicit npm package spec and cache; a subpath can select a binary | Pin the package/subpath and model lock, cache, lifecycle-script, and Deno permission settings |
+
+Treat mutable tags and ranges such as `latest`, `next`, `@2`, caret, and tilde ranges as selectors, not pins. A privileged repeatable workflow needs an exact reviewed version plus lockfile/integrity enforcement where the runner supports it.
 
 ## High-Signal Patterns
 
@@ -83,17 +101,18 @@ Search executable surfaces and retain file, line, command, and execution context
 
 ```bash
 rg -n --no-heading -g '!node_modules' -g '!**/dist/**' \
-  -e '\b(npx|npm\s+exec|bunx|pnpm\s+dlx|yarn\s+dlx)\s+[^[:space:]]+' \
-  -e '"command"\s*:\s*"(npx|bunx)"' \
-  -e '"args"\s*:\s*\[[^]]*"-y"' \
+  -e '\b(npx|npm\s+exec|bunx|pnx|pnpx|pnpm\s+dlx|yarn\s+dlx)\s+[^[:space:]]+' \
+  -e '\bdeno\s+run\b[^\n]*\bnpm:' \
+  -e '"command"\s*:\s*"(npx|bunx|pnx|pnpx|pnpm|yarn|deno)"' \
+  -e '"args"\s*:\s*\[[^]]*"(dlx|npm:[^"]+|-y)"' \
   .
 ```
 
-Search the whole tree rather than a fixed file list: these commands also live in
+Search the source/configuration tree rather than a fixed file list: these commands also live in
 `scripts/`, husky/lint-staged hooks, `turbo.json`/`nx.json` task definitions,
 `.circleci/`, composite-action `action.yml`, devcontainer `postCreateCommand`,
 nested workspace `package.json` files, and editor/agent config under
-`.cursor/`, `.vscode/`, and `.mcp.json`.
+`.cursor/`, `.vscode/`, and `.mcp.json`. If generated output is itself shipped or executed, search its specific directory separately instead of globally including every `dist/` artifact.
 
 Also inspect:
 
@@ -124,6 +143,8 @@ Interpret this carefully:
 
 Repeat the resolution analysis in every context that matters: repository root, documented launch directory, CI checkout, generated agent configuration, and bootstrap-before-install flow. Do not substitute a clean empty directory for the target context except to understand npm's generic name mapping.
 
+Do not apply `npx --no` as a generic dry-run flag. Use `bunx --no-install` only for Bun's local-resolution question. `dlx` and `deno run npm:` already name a remotely resolvable package, so validate their package spec, registry, cache/lock, selected binary or subpath, and permissions using that runner's own behavior.
+
 ## Ownership and Registry State
 
 Query the exact registry selected by the target configuration, then distinguish:
@@ -135,32 +156,26 @@ Query the exact registry selected by the target configuration, then distinguish:
 - transient/rate-limited/blocked lookup (`429`, `5xx`, timeout)
 - placeholder, reserved, disputed, or previously unpublished name
 
-Before trusting any of those states, prove the lookup path itself discriminates.
-A sandboxed or proxied egress can fail uniformly, which turns every candidate
-into a false unregistered name and a fabricated critical:
+Before trusting any of those states, check whether the target's lookup path can distinguish a known existing package from a newly generated negative control. Resolve the registry from the same working directory and configuration used by the target:
 
 ```bash
-# Positive and negative controls against the same registry, same session
-curl -so /dev/null -w '%{http_code}\n' https://registry.npmjs.org/lodash          # expect 200
-curl -so /dev/null -w '%{http_code}\n' https://registry.npmjs.org/$(openssl rand -hex 12)  # expect 404
+# Public npm example; use a known package from the actual registry when different.
+task_registry="$(npm config get registry)"
+npm view --registry="$task_registry" lodash name --json
+npm view --registry="$task_registry" "strix-control-$(openssl rand -hex 12)" name --json
 ```
 
-If the control pair does not return `200` and `404`, the egress is filtered,
-mirrored, or intercepted; report nothing from ownership state until it does.
-Re-confirm each `404` at least once more before relying on it.
+Run the pair through the same `.npmrc`, scope routing, authentication, proxy, and egress path as the candidate. Direct `curl` requests to the public registry are a separate observation unless the target runner uses that exact route. A successful pair establishes coarse positive/negative discrimination, not authenticity of every candidate response; verify that returned documents name the requested package and contain plausible registry metadata.
+
+If the pair fails or returns indistinguishable responses, mark the target-path registry state `UNKNOWN`. An independently verified public-registry response may characterize public state, but it does not prove what the target runner resolves. Re-confirm candidate absence before relying on it.
 
 A `404` proves absence from that registry at that time; it does not by itself prove that registration would be accepted. Registry similarity, trademark, reservation, security-hold, and unpublish rules remain separate facts. Two concrete cases to check rather than infer:
 
-- npm returns `200` for registry-owned security placeholders. Read `maintainers`
-  and the published versions: a sole `0.0.1-security` version owned by npm means
-  the name is taken and not claimable by anyone, including an attacker.
-- npm rejects new names that collide with an existing package once punctuation
-  (`.`, `-`, `_`) is stripped, so a `404` name such as `some-tool` can be
-  unregisterable when `sometool` exists. Check the stripped form too.
+- A registry-owned security placeholder occupies the name even when its only version is `0.0.1-security`. Do not identify one from the version alone: inspect the packument, description, dist-tags, top-level and version-level maintainers, and version publisher such as `_npmUser`.
+- npm rejects new unscoped names that collide with an existing package after `.`, `-`, and `_` are removed. Normalize both the candidate and existing names: looking up only the candidate's stripped form catches `some-tool` versus `sometool`, but misses the reverse direction when the existing package contains punctuation. Treat this as registry-policy eligibility evidence, not a guarantee that registration would otherwise succeed.
 
 When a candidate name is already registered, distinguish the target's own
-organization from an unrelated party before calling it a clash. `npm owner ls
-<name>` and the package's repository/homepage metadata usually settle it.
+organization from an unrelated party before calling it a clash. Correlate `npm owner ls <name>`, version-level publisher metadata, known target-controlled npm organizations, and independently verified repository provenance. Repository/homepage fields are self-asserted supporting evidence and do not settle ownership alone. If publisher identity remains ambiguous, mark it `UNKNOWN`.
 
 ## Validation and Impact
 
@@ -178,27 +193,15 @@ Do not report an unregistered name without an execution path, or an execution pa
 
 ## Reporting
 
-There is no CVE and no vulnerable version here, so this does not go through
-`create_dependency_report` — that tool is for advisory-matched dependency
-versions and requires a CVE. File a proven case with
-`create_vulnerability_report`, using the non-destructive resolution transcript
-as the PoC. Never publish, reserve, or install a contested name as evidence.
+There is no CVE and no vulnerable installed version here, so this does not go through `create_dependency_report`; that tool requires an advisory-matched CVE. Use `create_vulnerability_report` only after the applicable core condition is fully verified.
 
-Gate severity on the execution context and the completeness of the chain:
+A registry lookup or `404` alone is candidate evidence, not a working PoC. The report must preserve the target invocation and execution context, show the exact selected package and binary/module, demonstrate the runner's execution transition in a representative controlled setup without publishing the contested name, and establish the authority inherited by that process. When source is available, include the responsible invocation/configuration and concrete fix in `code_locations`.
 
-- **High/critical** — the fallback is proven in a privileged context (CI,
-  release/publish pipeline, container build, or an agent/MCP launcher running
-  with real credentials), the name is unowned by the target and claimable, and
-  no `--no`, version pin, scope routing, or local install prevents the fetch.
-- **Medium** — the name resolves to an unrelated third party, or the fallback is
-  proven in a developer-local context, but full exploitability is not
-  established.
-- **Low/informational** — documentation- or comment-only references, contexts
-  where the command is locally satisfied, names that are unregistered but
-  unregisterable, or a resolution chain that stops before execution.
+Do not file documentation/comment-only references, locally satisfied commands, unregisterable names, ambiguous ownership, or chains that stop before package execution. Retain them as investigation notes only when useful.
 
-Deduplicate by candidate name plus evidence path; one report per distinct name,
-not per call site.
+Derive CVSS from the demonstrated path rather than a fixed severity label. Account for required developer/user action, registry and configuration prerequisites, runner permissions, credential availability, and the confidentiality, integrity, and availability actually exposed. A CI, release, container-build, or agent context can be severe, but the context name alone does not establish High or Critical impact.
+
+Deduplicate by root cause, affected asset/workflow, and remediation. Combine call sites when the same configuration mistake and fix apply; keep separate findings when the same candidate name affects different products, tenants, runner semantics, authority, or fixes.
 
 ## False Positives
 
@@ -208,21 +211,23 @@ not per call site.
 - The public package is the deliberately selected third-party tool.
 - npm fetches the manifest but cannot infer or execute a bin.
 - The reference appears only in generated/minified text with no executable call site.
-- A registry/proxy error is misread as an unregistered name, or the control pair above was never run.
+- A registry/proxy error is misread as an unregistered name, or the target-path control pair is inconclusive.
 - A package is absent but registry policy prevents the contested registration.
-- The command is popular ecosystem tooling (`tsc`, `eslint`, `prettier`, `vite`) resolving to its real maintainer; a `200` there is the intended tool, not a clash.
+- The command resolves to the deliberately selected ecosystem tool and expected publisher.
 - The already-registered name belongs to the target's own organization.
+- An explicit `dlx` or `npm:` package spec is treated as missing-local fallback without evidence of a package/publisher mismatch.
 
 ## Remediation
 
 - Install the intended package and invoke its local executable through an npm script.
-- Bind the command explicitly: `npx --package @org/tool org-tool`.
-- Use `--no` where a missing local dependency must fail instead of fetching, and prefer `--package @org/tool` in any privileged workflow.
-- Reserve the unscoped `bin` names of published scoped packages so the fallback name cannot be taken by a third party.
+- For npm, bind and pin the provider: `npx --package @org/tool@<version> org-tool`; use `--no` when a missing dependency must fail.
+- For Bun, use `bunx --package @org/tool@<version> org-tool` and `--no-install` when remote installation is not intended.
+- Replace `yarn dlx`/`pnpm dlx` in repeatable or privileged workflows with a declared, locked dependency plus the runner's local `exec` command. When ephemeral execution is required, bind and pin the provider package explicitly.
+- For Deno, pin the `npm:` package and binary subpath, retain a reviewed lockfile, use cache-only operation where appropriate, and grant only the permissions the command requires.
 - Route private scopes to the intended registry and prevent public fallback.
 - Pin package versions and lockfiles in privileged workflows.
 - Replace bare `npx -y <name>` agent launchers with reviewed, publisher-qualified, version-pinned package specs.
 
 ## Summary
 
-Treat npx confusion as an execution-context bug: an unresolved executable is reinterpreted as a package name and fetched from a registry. Prove each resolver transition, distinguish binary names from package names, and evaluate every working directory and automation context independently.
+Treat package-runner confusion as an identity and execution-context bug. Prove the runner-specific transition, distinguish binary names from package names, verify registry and publisher state without equating absence with eligibility, and report only a complete execution path under the affected workflow's actual authority.
