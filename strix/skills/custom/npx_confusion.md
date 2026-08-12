@@ -162,7 +162,7 @@ Before trusting any of those states, check whether the target's lookup path can 
 # Public npm example; use a known package from the actual registry when different.
 task_registry="$(npm config get registry)"
 npm view --registry="$task_registry" lodash name --json
-npm view --registry="$task_registry" "strix-control-$(openssl rand -hex 12)" name --json
+npm view --registry="$task_registry" "$(openssl rand -hex 12)" name --json
 ```
 
 Run the pair through the same `.npmrc`, scope routing, authentication, proxy, and egress path as the candidate. Direct `curl` requests to the public registry are a separate observation unless the target runner uses that exact route. A successful pair establishes coarse positive/negative discrimination, not authenticity of every candidate response; verify that returned documents name the requested package and contain plausible registry metadata.
