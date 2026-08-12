@@ -315,6 +315,18 @@ strix auth status             # show the active sign-in
 strix auth logout             # forget the sign-in
 ```
 
+#### Sign in with an OpenCode subscription
+
+You can also run Strix on [OpenCode Zen](https://opencode.ai/docs/zen/) credits or an [OpenCode Go](https://opencode.ai/docs/go/) subscription:
+
+```bash
+strix auth login opencode     # paste your API key from opencode.ai/auth
+
+export STRIX_LLM="opencode/claude-sonnet-5"   # opencode/<model> runs on Zen credits
+export STRIX_LLM="opencode-go/kimi-k3"        # opencode-go/<model> runs on the Go subscription
+strix --target ./app-directory
+```
+
 **Recommended models for best results:**
 
 - [OpenAI GPT-5.4](https://openai.com/api/) - `openai/gpt-5.4`
