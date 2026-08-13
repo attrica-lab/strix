@@ -66,12 +66,12 @@ def test_subscription_label_prefers_persisted_provider(monkeypatch) -> None:  # 
     resumed = mock.MagicMock(
         run_record={"auth_mode": "subscription", "subscription_provider": "Grok"}
     )
-    assert utils._subscription_label(resumed) == "Grok subscription"
+    assert utils.subscription_label(resumed) == "Grok subscription"
 
     # With no persisted provider, it derives the label from settings (not a
     # hardcoded default).
     fresh = mock.MagicMock(run_record={})
-    assert utils._subscription_label(fresh) == "ChatGPT subscription"
+    assert utils.subscription_label(fresh) == "ChatGPT subscription"
 
 
 def test_persisted_run_record_carries_provider(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
