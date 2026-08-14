@@ -5,7 +5,7 @@ description: "Run Strix with self-hosted LLMs for privacy and air-gapped testing
 
 Running Strix with local models allows for completely offline, privacy-first security assessments. Data never leaves your machine, making this ideal for sensitive internal networks or air-gapped environments.
 
-## Privacy Versus Performance
+## Privacy vs Performance
 
 | Feature | Local Models | Cloud Models (GPT-5/Claude 4.5) |
 |---------|--------------|--------------------------------|
@@ -15,9 +15,9 @@ Running Strix with local models allows for completely offline, privacy-first sec
 | **Setup** | Complex (GPU required) | Instant |
 
 <Warning>
-**Compatibility Note**: Strix requires advanced agent capabilities, including tool use, multi-step planning, and self-correction. Most local models under 70B parameters struggle with these tasks.
+**Compatibility Note**: Strix relies on advanced agentic capabilities (tool use, multi-step planning, self-correction). Most local models, especially those under 70B parameters, struggle with these complex tasks.
 
-Critical assessments often require capable cloud models, such as Claude 4.5 Sonnet or GPT-5. Local models suit assessments where privacy has priority.
+For critical assessments, use state-of-the-art cloud models such as **Claude 4.5 Sonnet** or **GPT-5**. Use local models only when privacy is the absolute priority.
 </Warning>
 
 ## Ollama
@@ -39,7 +39,7 @@ Critical assessments often require capable cloud models, such as Claude 4.5 Sonn
 
 ### Recommended Models
 
-We recommend these models for a good balance of reasoning and tool use:
+We recommend these models for the best balance of reasoning and tool use:
 - **Qwen3 VL** (`ollama pull qwen3-vl`)
 - **DeepSeek V3.1** (`ollama pull deepseek-v3.1`)
 - **Devstral 2** (`ollama pull devstral-2`)
@@ -72,7 +72,7 @@ verification against a real endpoint.
 
 ## Tool calling must return structured `tool_calls`
 
-Strix requires a **native** function or tool call during each working turn. If the inference server returns plain assistant text, Strix cannot execute the call. The agent then requests another tool call and stops after its recovery attempts end.
+Strix is entirely tool-driven. Every working turn must be a **native** function or tool call. If the inference server returns the call as plain assistant text, Strix never sees a call it can execute. The agent makes no real progress and gives up after its recovery attempts end.
 
 This is almost always an **inference-server configuration** problem, not a model or Strix problem. Common symptoms are the model printing a call as text such as:
 
@@ -82,19 +82,19 @@ exec_command(cmd="nmap ...", timeout=180)
 {"action": "exec_command", "params": {"cmd": "nmap ..."}}
 ```
 
-Configure the inference server to parse tool tokens into structured `tool_calls`. A configured endpoint returns a structured call or rejects the request. It does not return the call as text.
+The fix belongs on the inference server. It must be configured to parse the model's tool tokens into structured `tool_calls`. A correctly configured endpoint either returns a structured call or rejects the request outright. It never leaks the call as text.
 
 ### Fixes by server
 
 **llama.cpp (`llama-server`)**
-- Run with `--jinja` and a tool-use chat template that matches the model. Recent builds enable `--jinja` by default. Upgrade if yours does not.
-- For thinking models, align or disable reasoning with `--reasoning-format` or `-rea off`.
-- Set a low temperature, such as `--temp 0.2`, to improve tool-call reliability.
+- Run with `--jinja` and a correct tool-use chat template (`--chat-template` or `--chat-template-file` matching the model). Recent builds enable `--jinja` by default. Upgrade if yours does not.
+- For thinking models, align or disable reasoning (`--reasoning-format` or `-rea off`) so it does not break tool-call parsing.
+- A low temperature, such as `--temp 0.2`, improves tool-call reliability.
 
 **Ollama**
-- Use a recent Ollama version and a model whose template supports tools. Ollama returns `tools param requires --jinja flag` when the template lacks tool support.
-- For reasoning models such as qwen3, disable **thinking** mode. Thinking mode can move tool calls into `content` instead of `tool_calls`. Disable it in Ollama with a non-thinking model or `think: false` in the model parameters or `Modelfile`.
-- Raise **`num_ctx`** to a value between 16k and 32k, or higher. Strix sends a large system prompt and many tool schemas. A small context can truncate the tool definitions and stop valid calls. A short test prompt can look fine while a real scan fails.
+- Use a recent Ollama and a model whose template wires tools. Modern Ollama returns `tools param requires --jinja flag` if the template lacks tool support.
+- For reasoning models such as qwen3, disable the model's **thinking** mode. Thinking left on can push the tool call into `content` instead of the structured `tool_calls` field. Turn it off on the Ollama side with a non-thinking model variant, `think: false` in the model's parameters, or `Modelfile`.
+- Raise **`num_ctx`** to at least 16k to 32k. Strix sends a large system prompt plus many tool schemas. At Ollama's small default context, the tool definitions can be truncated from the prompt. The model can then stop emitting valid calls. A short test prompt can look fine while a real scan fails. Set this explicitly instead of inferring it from a quick check.
 
 **vLLM**
 - Start with `--enable-auto-tool-choice`, a matching `--tool-call-parser` (`hermes`, `qwen3_xml`, or `llama3_json`), and a matching `--reasoning-parser` for reasoning models.
