@@ -82,9 +82,9 @@ jobs:
 ```
 
 <Note>
-All CI platforms require Docker access. Your runner must have Docker available.
+All CI platforms require Docker access. Ensure your runner has Docker available.
 </Note>
 
-<Note>
-If diff-scope fails in CI, full git history is required for merge-base and branch comparison. In GitHub Actions, use `fetch-depth: 0`.
-</Note>
+<Tip>
+If diff-scope fails in CI, fetch full git history (for example, `fetch-depth: 0` in GitHub Actions) so merge-base and branch comparison can be resolved.
+</Tip>
