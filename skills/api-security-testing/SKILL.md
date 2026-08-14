@@ -1,0 +1,56 @@
+---
+name: api-security-testing
+description: Security-test a REST, GraphQL, or gRPC API with Strix — autonomous agents that enumerate endpoints from an OpenAPI/GraphQL schema (or by crawling), then actually exploit the API-specific vulnerability classes the OWASP API Security Top 10 covers: broken object-level authorization (BOLA/IDOR), broken function-level authorization, excessive data exposure, mass assignment, injection, SSRF, and auth/token flaws. Every finding comes with a working proof-of-concept request. Use when the user asks to pentest, security-test, audit, or find vulnerabilities in an API, endpoint, or backend service.
+license: Apache-2.0
+metadata:
+  author: usestrix
+  homepage: https://docs.strix.ai
+---
+
+# Security-test an API
+
+APIs fail differently from web UIs: there's no rendered surface to crawl, the interesting bugs are authorization-shaped rather than injection-shaped, and the same endpoint behaves differently per token. This workflow targets those specifics with Strix's autonomous agents.
+
+Install, LLM setup, full CLI flags, and the managed-cloud path are in the **penetration-testing-with-strix** skill. Read it if `strix --version` fails or the target isn't an API.
+
+## 1. Gather what the agents need
+
+APIs are near-impossible to test blind, so collect first:
+
+| Input | Why it matters |
+|---|---|
+| **Schema** — OpenAPI/Swagger URL or file, GraphQL endpoint (introspection), or `.proto` | Turns guesswork into full endpoint enumeration. Biggest single win in coverage. |
+| **Two sets of credentials/tokens**, ideally in different tenants | BOLA/IDOR — the #1 API vulnerability class — can only be *proven* by accessing tenant A's objects with tenant B's token. |
+| **A low-privilege and a high-privilege token** | Required to prove broken function-level authorization (a `user` calling admin-only routes). |
+| **Example object IDs** | Lets agents test ID tampering immediately instead of hunting for valid identifiers. |
+| **Out-of-scope routes** | Payments, mass notification, destructive admin endpoints. |
+| **Rate limits / WAF** in front of the API | Avoids agents burning budget on throttled requests; mention them so testing adapts. |
+
+Ask the user for anything missing — don't fabricate tokens or scan an API they don't own.
+
+## 2. Run the scan
+
+```bash
+strix -n -t https://api.staging.example.com --max-budget 20 \
+  --instruction "OpenAPI spec: https://api.staging.example.com/openapi.json.
+Tenant A token: <tokenA> (org 1111, user id 11, order id 501).
+Tenant B token: <tokenB> (org 2222, user id 22).
+Admin token: <tokenAdmin>.
+Focus: BOLA/IDOR across orgs, function-level authz on /admin/*, mass assignment on PATCH /users/{id}, excessive data exposure in list responses.
+Out of scope: POST /billing/*, POST /notifications/broadcast."
+```
+
+- **Add the backend source for depth:** `-t ./services/api -t https://api.staging.example.com`. With code access the agents can reason about authorization checks and object ownership rather than inferring them from responses.
+- **GraphQL:** point at the GraphQL endpoint and say whether introspection is enabled; call out that you want batching/aliasing abuse, depth/complexity limits, and per-field authorization tested.
+- **Internal/private APIs** unreachable from your machine: use the managed platform's network connector — see **managed-pentesting-with-strix**.
+- Use `--instruction-file` when the credential/context block gets long, and keep tokens out of shell history and out of committed files.
+
+## 3. Verify findings
+
+`strix_runs/<run>/penetration_test_report.md` first, then `vulnerabilities/*.md` — each contains the exact request that proved the issue. Replay it (e.g. with `curl`) before reporting; for authorization findings, confirm the response really contains the other tenant's data rather than an empty 200.
+
+`findings.sarif` uploads to GitHub code scanning; `vulnerabilities.json` is the structured index for ticketing.
+
+## 4. Fix, re-test, and keep it tested
+
+Remediate with **fix-security-vulnerabilities-with-strix** (fix the authorization check, not the single endpoint), then re-run against the same target to prove the exploit is dead. Wire it into pull-request CI with **ci-security-scanning-with-strix** so new endpoints get tested as they ship.
