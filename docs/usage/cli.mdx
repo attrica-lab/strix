@@ -14,14 +14,14 @@ strix (--target <target> | --target-list <path>) [options]
 <ParamField path="--target, -t" type="string">
   Target to test. Accepts URLs, repositories, local directories, domains, IP addresses, API spec files (OpenAPI/Swagger `.json`/`.yaml`, a Postman collection export), or a live Postman collection by id (`postman://<collection-uuid>`). Can be specified multiple times. Fresh runs require at least one target source: `--target` or `--target-list`.
 
-  When the target is an API spec, Strix copies it into the agent workspace and authorizes its declared base URLs. Strix also resolves base URLs from a Postman environment. The agent reads the contract and tests the declared surface. Pair the spec with a deployed base URL, such as `--target ./openapi.yaml --target https://api.example.com`.
+  When the target is an API spec, Strix copies it into the agent workspace and authorizes its declared base URLs as in-scope hosts. Strix also authorizes base URLs that it resolves from a Postman environment. The agent then reads the contract and tests the full declared surface instead of finding endpoints by crawling. Pair the spec with the deployed base URL, such as `--target ./openapi.yaml --target https://api.example.com`, so the agent has a reachable host to attack.
 
   <Note>
     A local directory is mounted into the sandbox live and **writable**, so the agent edits your real files (`.git` excepted). Commit or stash first.
   </Note>
 
   <Note>
-    Fetching a Postman collection by ID requires `POSTMAN_API_KEY`. Add `?env=<environment-uuid>` to fetch a Postman environment. Use a target such as `postman://<collection-uuid>?env=<environment-uid>`.
+    Fetching a Postman collection by ID requires `POSTMAN_API_KEY`. Add `?env=<environment-uuid>` to also fetch a Postman environment, which resolves the `{{baseUrl}}` and token variables that the collection references. Use a target such as `postman://<collection-uuid>?env=<environment-uid>`.
   </Note>
 </ParamField>
 
