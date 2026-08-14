@@ -1680,3 +1680,86 @@ def validate_config_file(config_path: str) -> Path:
         sys.exit(1)
 
     return path
+
+
+# --- Workspace files -------------------------------------------------------
+#
+# ``--workspace-file`` places a single host file into the sandbox workspace,
+# outside every target tree. Content rides the same upload as the target
+# sources, so the total is capped to keep session bring-up quick.
+
+WORKSPACE_FILES_MAX_TOTAL_BYTES = 10 * 1024 * 1024
+
+
+def _workspace_file_dest(spec: str, source: Path) -> str:
+    """Return the workspace-relative destination declared by ``spec``."""
+    _, sep, dest = spec.rpartition(":")
+    candidate = dest.strip() if sep and dest.strip() else source.name
+    if candidate.startswith("/") or Path(candidate).is_absolute():
+        if not candidate.startswith("/workspace/"):
+            raise ValueError(
+                f"'{spec}' must land inside the workspace: use a relative "
+                "destination or a path under /workspace"
+            )
+        candidate = candidate.removeprefix("/workspace/")
+    candidate = candidate.strip("/")
+    if not candidate:
+        raise ValueError(f"'{spec}' has an empty destination path")
+    if any(part in ("", ".", "..") for part in candidate.split("/")):
+        raise ValueError(f"'{spec}' has an invalid destination path: {candidate}")
+    return candidate
+
+
+def resolve_workspace_files(specs: list[str] | None) -> list[dict[str, str]]:
+    """Validate ``PATH[:DEST]`` specs into source/destination pairs.
+
+    Each spec names a readable host file. ``DEST`` is the path inside
+    ``/workspace``; it defaults to the file name. Raises ``ValueError`` with a
+    user-facing message when a spec is unusable.
+    """
+    resolved: list[dict[str, str]] = []
+    seen: dict[str, str] = {}
+    total = 0
+    for spec in specs or []:
+        raw, sep, dest = spec.rpartition(":")
+        source_text = raw if sep and dest.strip() else spec
+        source = Path(source_text.strip()).expanduser()
+        if not source.is_file():
+            raise ValueError(f"'{source}' is not an existing file")
+        try:
+            with source.open("rb"):
+                pass
+        except OSError as error:
+            raise ValueError(f"Cannot read '{source}': {error}") from error
+        workspace_rel = _workspace_file_dest(spec, source)
+        if workspace_rel in seen:
+            raise ValueError(
+                f"Two workspace files target /workspace/{workspace_rel}: "
+                f"'{seen[workspace_rel]}' and '{source}'"
+            )
+        total += source.stat().st_size
+        if total > WORKSPACE_FILES_MAX_TOTAL_BYTES:
+            limit_mb = WORKSPACE_FILES_MAX_TOTAL_BYTES // (1024 * 1024)
+            raise ValueError(f"Workspace files exceed the {limit_mb} MB total limit")
+        seen[workspace_rel] = str(source)
+        resolved.append(
+            {
+                "source_path": str(source.resolve()),
+                "workspace_path": f"/workspace/{workspace_rel}",
+            }
+        )
+    return resolved
+
+
+def read_workspace_files(workspace_files: list[dict[str, str]] | None) -> list[dict[str, Any]]:
+    """Read resolved workspace files into engine ``extra_files`` entries."""
+    entries: list[dict[str, Any]] = []
+    for workspace_file in workspace_files or []:
+        source = Path(workspace_file["source_path"])
+        entries.append(
+            {
+                "workspace_path": workspace_file["workspace_path"],
+                "content": source.read_bytes(),
+            }
+        )
+    return entries

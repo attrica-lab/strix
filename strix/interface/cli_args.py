@@ -14,6 +14,7 @@ from strix.interface.update_check import self_update
 from strix.interface.utils import (
     check_mountable_dir,
     collect_local_sources,
+    resolve_workspace_files,
     validate_config_file,
 )
 
@@ -92,6 +93,10 @@ Examples:
   # Custom instructions (from file)
   strix --target example.com --instruction-file ./instructions.txt
   strix --target https://app.com --instruction-file /path/to/detailed_instructions.md
+
+  # Extra files placed in the sandbox workspace
+  strix --target ./my-project --workspace-file ./wordlist.txt
+  strix --target https://app.com --workspace-file ./openapi.yaml:specs/openapi.yaml
         """,
     )
 
@@ -147,6 +152,18 @@ Examples:
         help="Path to a file containing detailed custom instructions for the penetration test. "
         "Use this option when you have lengthy or complex instructions saved in a file "
         "(e.g., '--instruction-file ./detailed_instructions.txt').",
+    )
+
+    parser.add_argument(
+        "--workspace-file",
+        type=str,
+        action="append",
+        metavar="PATH[:DEST]",
+        help="Place a file from this machine into the sandbox workspace before the scan "
+        "starts, for example a wordlist, an API specification, or notes. Repeat the option "
+        "for more files. DEST is the path inside /workspace and defaults to the file name "
+        "(for example '--workspace-file ./wordlist.txt:lists/wordlist.txt'). The file is "
+        "read-only inside the sandbox and lands outside every target directory.",
     )
 
     parser.add_argument(
@@ -268,6 +285,11 @@ Examples:
         except Exception as e:
             parser.error(f"Failed to read instruction file '{instruction_path}': {e}")
 
+    try:
+        args.workspace_files = resolve_workspace_files(getattr(args, "workspace_file", None))
+    except ValueError as error:
+        parser.error(f"--workspace-file: {error}")
+
     args.user_explicit_instruction = args.instruction if args.resume else None
     # What the user actually asked for, kept apart from args.instruction because
     # prepare_run prepends the diff-scope preamble to that. This is the text the
@@ -366,6 +388,17 @@ def _load_resume_state(args: argparse.Namespace, parser: argparse.ArgumentParser
     # this directory, so the target mount guard does not apply to it; it only has
     # to still be there.
     args.workspace_mount = workspace_mount
+
+    # Replace the workspace files the run started with, unless this resume names
+    # its own. A file deleted between runs is dropped rather than fatal: it is
+    # context for the agent, not scope.
+    if not getattr(args, "workspace_files", None):
+        args.workspace_files = [
+            workspace_file
+            for workspace_file in state.get("workspace_files") or []
+            if isinstance(workspace_file, dict)
+            and Path(str(workspace_file.get("source_path", ""))).is_file()
+        ]
     if workspace_mount:
         if not Path(workspace_mount).expanduser().is_dir():
             parser.error(
