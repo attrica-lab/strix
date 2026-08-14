@@ -128,6 +128,68 @@ def test_resume_restores_a_target_less_workspace_mount(
     assert args.instruction == "audit the auth flow"
 
 
+def test_resume_revalidates_persisted_workspace_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Resume places the same files again, and drops ones that went away."""
+    work = tmp_path / "project"
+    work.mkdir()
+    kept = tmp_path / "wordlist.txt"
+    kept.write_text("admin\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    _write_run_record(
+        tmp_path / "strix_runs",
+        "pentest_abcd",
+        {
+            "run_name": "pentest_abcd",
+            "targets_info": [],
+            "local_sources": [],
+            "workspace_mount": str(work),
+            "workspace_files": [
+                {"source_path": str(kept), "workspace_path": "/workspace/lists/words.txt"},
+                {"source_path": str(tmp_path / "gone.txt"), "workspace_path": "/workspace/g.txt"},
+            ],
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["strix", "--resume", "pentest_abcd"])
+
+    args = cli_main.parse_arguments()
+
+    assert args.workspace_files == [
+        {"source_path": str(kept), "workspace_path": "/workspace/lists/words.txt"}
+    ]
+
+
+def test_resume_rejects_an_edited_workspace_file_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A hand-edited record cannot place a file outside the workspace."""
+    work = tmp_path / "project"
+    work.mkdir()
+    source = tmp_path / "wordlist.txt"
+    source.write_text("admin\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    _write_run_record(
+        tmp_path / "strix_runs",
+        "pentest_abcd",
+        {
+            "run_name": "pentest_abcd",
+            "targets_info": [],
+            "local_sources": [],
+            "workspace_mount": str(work),
+            "workspace_files": [
+                {"source_path": str(source), "workspace_path": "/etc/cron.d/payload"}
+            ],
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["strix", "--resume", "pentest_abcd"])
+
+    with pytest.raises(SystemExit):
+        cli_main.parse_arguments()
+
+    assert "invalid workspace file" in capsys.readouterr().err
+
+
 def test_resume_reports_a_missing_workspace_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -390,15 +390,21 @@ def _load_resume_state(args: argparse.Namespace, parser: argparse.ArgumentParser
     args.workspace_mount = workspace_mount
 
     # Replace the workspace files the run started with, unless this resume names
-    # its own. A file deleted between runs is dropped rather than fatal: it is
-    # context for the agent, not scope.
+    # its own. The persisted record is revalidated like a fresh flag, so an
+    # edited run.json cannot widen what a resume places. A file deleted between
+    # runs is dropped rather than fatal: it is context for the agent, not scope.
     if not getattr(args, "workspace_files", None):
-        args.workspace_files = [
-            workspace_file
+        restored = [
+            f"{source_path}:{workspace_path}"
             for workspace_file in state.get("workspace_files") or []
             if isinstance(workspace_file, dict)
-            and Path(str(workspace_file.get("source_path", ""))).is_file()
+            and (source_path := Path(str(workspace_file.get("source_path") or ""))).is_file()
+            and (workspace_path := str(workspace_file.get("workspace_path") or ""))
         ]
+        try:
+            args.workspace_files = resolve_workspace_files(restored)
+        except ValueError as error:
+            parser.error(f"--resume {args.resume}: invalid workspace file: {error}")
     if workspace_mount:
         if not Path(workspace_mount).expanduser().is_dir():
             parser.error(
