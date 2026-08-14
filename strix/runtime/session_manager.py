@@ -8,10 +8,11 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from agents.sandbox.entries import BaseEntry, LocalDir
+from agents.sandbox.entries import BaseEntry, File, LocalDir
 from agents.sandbox.manifest import Environment, Manifest
 
 from strix.config import load_settings
+from strix.core.paths import run_dir_for, runtime_state_dir
 from strix.runtime.backends import backend_supports_bind_mounts, get_backend
 from strix.runtime.caido_bootstrap import bootstrap_caido
 
@@ -73,6 +74,86 @@ def build_manifest_entries(local_sources: list[dict[str, Any]]) -> dict[str | Pa
     return entries
 
 
+def _extra_file_rel_path(workspace_path: str) -> str | None:
+    """Validate an extra-file target path and return it relative to /workspace.
+
+    Only absolute paths under the workspace root are accepted; anything else
+    (including ``..`` traversal segments) is rejected so callers cannot place
+    orchestrator-provided content outside the sandbox workspace.
+    """
+    prefix = f"{_WORKSPACE_ROOT}/"
+    if not workspace_path.startswith(prefix):
+        return None
+    rel = workspace_path[len(prefix) :].strip("/")
+    if not rel or any(part in ("", ".", "..") for part in rel.split("/")):
+        return None
+    return rel
+
+
+def _extra_file_content(extra_file: dict[str, Any]) -> bytes | None:
+    content = extra_file.get("content")
+    if isinstance(content, bytes | bytearray):
+        return bytes(content)
+    if isinstance(content, str):
+        return content.encode("utf-8")
+    return None
+
+
+def build_extra_file_entries(extra_files: list[dict[str, Any]]) -> dict[str | Path, BaseEntry]:
+    """Map extra files to in-memory ``File`` manifest entries.
+
+    Each item is ``{"workspace_path": "/workspace/<rel>", "content": bytes|str}``;
+    manifest backends materialize the entry at the requested path alongside the
+    ``LocalDir`` source uploads. Invalid items are skipped with a warning.
+    """
+    entries: dict[str | Path, BaseEntry] = {}
+    for extra_file in extra_files:
+        rel = _extra_file_rel_path(str(extra_file.get("workspace_path") or ""))
+        content = _extra_file_content(extra_file)
+        if rel is None or content is None:
+            logger.warning(
+                "Skipping invalid extra file entry (workspace_path=%r)",
+                extra_file.get("workspace_path"),
+            )
+            continue
+        entries[rel] = File(content=content)
+    return entries
+
+
+def build_extra_file_bind_mounts(
+    extra_files: list[dict[str, Any]],
+    staging_dir: Path,
+) -> list[dict[str, Any]]:
+    """Stage extra files on the host and map them to read-only bind mounts.
+
+    Bind-mount backends bypass the manifest, so the content is written under
+    ``staging_dir`` (one numbered subdirectory per file to avoid basename
+    collisions) and mounted read-only at the same ``/workspace/<rel>`` path the
+    manifest path would use. Invalid items are skipped with a warning.
+    """
+    mounts: list[dict[str, Any]] = []
+    for index, extra_file in enumerate(extra_files):
+        rel = _extra_file_rel_path(str(extra_file.get("workspace_path") or ""))
+        content = _extra_file_content(extra_file)
+        if rel is None or content is None:
+            logger.warning(
+                "Skipping invalid extra file entry (workspace_path=%r)",
+                extra_file.get("workspace_path"),
+            )
+            continue
+        host_file = staging_dir / str(index) / Path(rel).name
+        host_file.parent.mkdir(parents=True, exist_ok=True)
+        host_file.write_bytes(content)
+        mounts.append(
+            {
+                "source": str(host_file),
+                "target": f"{_WORKSPACE_ROOT}/{rel}",
+                "read_only": True,
+            }
+        )
+    return mounts
+
+
 def _metadata_mounts(tree: Path, target: str) -> list[dict[str, Any]]:
     mounts: list[dict[str, Any]] = []
     for name in _PROTECTED_METADATA_NAMES:
@@ -111,12 +192,19 @@ async def create_or_reuse(
     *,
     image: str,
     local_sources: list[dict[str, Any]],
+    extra_files: list[dict[str, Any]] | None = None,
     status_sink: StatusSink | None = None,
 ) -> dict[str, Any]:
     """Return the existing session bundle for ``scan_id`` or create a new one.
 
     Each ``local_sources`` entry exposes its host ``source_path`` at
     ``/workspace/<workspace_subdir>`` inside the container.
+
+    Each ``extra_files`` entry (``{"workspace_path": "/workspace/<rel>",
+    "content": bytes | str}``) lands as a single file at its ``workspace_path``
+    regardless of backend: an in-memory ``File`` manifest entry on manifest
+    backends, a read-only bind mount of a host-staged copy on bind-mount
+    backends.
     """
 
     def report(phase: str) -> None:
@@ -134,9 +222,14 @@ async def create_or_reuse(
     if backend_supports_bind_mounts(backend_name):
         bind_mounts = build_bind_mounts(local_sources)
         entries: dict[str | Path, BaseEntry] = {}
+        if extra_files:
+            staging_dir = runtime_state_dir(run_dir_for(scan_id)) / "extra_files"
+            bind_mounts.extend(build_extra_file_bind_mounts(extra_files, staging_dir))
     else:
         bind_mounts = []
         entries = build_manifest_entries(local_sources)
+        if extra_files:
+            entries.update(build_extra_file_entries(extra_files))
 
     # Caido runs as an in-container sidecar; HTTP(S) traffic from any
     # process started via ``session.exec`` (the SDK's Shell tool, etc.)

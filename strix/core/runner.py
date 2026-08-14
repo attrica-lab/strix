@@ -114,6 +114,7 @@ async def run_strix_scan(
     scan_id: str | None = None,
     image: str,
     local_sources: list[dict[str, Any]] | None = None,
+    extra_files: list[dict[str, Any]] | None = None,
     coordinator: AgentCoordinator | None = None,
     interactive: bool = False,
     max_turns: int = DEFAULT_MAX_TURNS,
@@ -129,6 +130,9 @@ async def run_strix_scan(
 
     ``root_instructions_override`` adds root scan instructions to the rendered
     root prompt without replacing the system-verified scope block.
+    ``extra_files`` entries (``{"workspace_path", "content"}``) are placed into
+    the sandbox workspace at session bring-up; see
+    :func:`strix.runtime.session_manager.create_or_reuse`.
     ``extra_system_prompt_context`` is merged into the root agent's scan
     context before prompt rendering. Child agents keep the standard scan prompt
     and context.
@@ -228,6 +232,7 @@ async def run_strix_scan(
         scan_id,
         image=image,
         local_sources=local_sources or [],
+        extra_files=extra_files,
         status_sink=status_sink,
     )
     report("Waiting for the first model response")

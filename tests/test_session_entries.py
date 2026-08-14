@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 
-from agents.sandbox.entries import LocalDir
+from agents.sandbox.entries import File, LocalDir
 
 from strix.runtime.backends import (
     _BACKENDS,
@@ -12,11 +13,12 @@ from strix.runtime.backends import (
     backend_supports_bind_mounts,
     register_backend,
 )
-from strix.runtime.session_manager import build_bind_mounts, build_manifest_entries
-
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from strix.runtime.session_manager import (
+    build_bind_mounts,
+    build_extra_file_bind_mounts,
+    build_extra_file_entries,
+    build_manifest_entries,
+)
 
 
 def _source(subdir: str, path: str, *, protect_metadata: bool = False) -> dict[str, Any]:
@@ -161,6 +163,92 @@ def test_manifest_entries_skip_incomplete_sources() -> None:
         )
         == {}
     )
+
+
+def test_extra_file_becomes_in_memory_manifest_entry() -> None:
+    entries = build_extra_file_entries(
+        [{"workspace_path": "/workspace/.strix/dependency-issues.jsonl", "content": b"{}\n"}]
+    )
+
+    assert set(entries) == {".strix/dependency-issues.jsonl"}
+    entry = entries[".strix/dependency-issues.jsonl"]
+    assert isinstance(entry, File)
+    assert entry.content == b"{}\n"
+
+
+def test_extra_file_str_content_is_encoded_utf8() -> None:
+    entries = build_extra_file_entries(
+        [{"workspace_path": "/workspace/.strix/note.txt", "content": "héllo"}]
+    )
+
+    entry = entries[".strix/note.txt"]
+    assert isinstance(entry, File)
+    assert entry.content == "héllo".encode()
+
+
+def test_extra_file_invalid_paths_and_content_are_skipped() -> None:
+    assert (
+        build_extra_file_entries(
+            [
+                {"workspace_path": "/etc/passwd", "content": b"x"},
+                {"workspace_path": "/workspace/../escape", "content": b"x"},
+                {"workspace_path": "/workspace/a/../../escape", "content": b"x"},
+                {"workspace_path": "/workspace/", "content": b"x"},
+                {"workspace_path": "", "content": b"x"},
+                {"workspace_path": "/workspace/ok.txt", "content": None},
+                {"workspace_path": "/workspace/ok.txt"},
+            ]
+        )
+        == {}
+    )
+
+
+def test_extra_file_becomes_read_only_bind_mount_of_staged_copy(tmp_path: Path) -> None:
+    staging = tmp_path / "staging"
+
+    mounts = build_extra_file_bind_mounts(
+        [{"workspace_path": "/workspace/.strix/dependency-issues.jsonl", "content": b"{}\n"}],
+        staging,
+    )
+
+    assert len(mounts) == 1
+    mount = mounts[0]
+    assert mount["target"] == "/workspace/.strix/dependency-issues.jsonl"
+    assert mount["read_only"] is True
+    staged = Path(mount["source"])
+    assert staged.read_bytes() == b"{}\n"
+    assert staged.is_relative_to(staging)
+
+
+def test_extra_file_bind_mounts_and_entries_agree_on_the_sandbox_path(tmp_path: Path) -> None:
+    extra = [{"workspace_path": "/workspace/.strix/dependency-issues.jsonl", "content": b"{}\n"}]
+
+    entries = build_extra_file_entries(extra)
+    mounts = build_extra_file_bind_mounts(extra, tmp_path)
+
+    (rel,) = entries
+    assert mounts[0]["target"] == f"/workspace/{rel}"
+
+
+def test_extra_file_bind_mounts_skip_invalid_entries(tmp_path: Path) -> None:
+    bad = [{"workspace_path": "/nope", "content": b"x"}]
+    assert build_extra_file_bind_mounts(bad, tmp_path) == []
+    assert not tmp_path.exists() or list(tmp_path.iterdir()) == []
+
+
+def test_extra_file_bind_mounts_avoid_basename_collisions(tmp_path: Path) -> None:
+    mounts = build_extra_file_bind_mounts(
+        [
+            {"workspace_path": "/workspace/a/data.txt", "content": b"a"},
+            {"workspace_path": "/workspace/b/data.txt", "content": b"b"},
+        ],
+        tmp_path,
+    )
+
+    assert [m["target"] for m in mounts] == ["/workspace/a/data.txt", "/workspace/b/data.txt"]
+    assert Path(mounts[0]["source"]).read_bytes() == b"a"
+    assert Path(mounts[1]["source"]).read_bytes() == b"b"
+    assert mounts[0]["source"] != mounts[1]["source"]
 
 
 def test_only_bind_mount_capable_backends_are_registered_as_such() -> None:
