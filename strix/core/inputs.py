@@ -86,9 +86,13 @@ def _render_workspace_files(scan_config: dict[str, Any]) -> list[str]:
     instructions, and they name nothing to assess.
     """
     paths = [
-        str(workspace_file.get("workspace_path", ""))
+        path
         for workspace_file in scan_config.get("workspace_files") or []
-        if isinstance(workspace_file, dict) and workspace_file.get("workspace_path")
+        if isinstance(workspace_file, dict)
+        and (path := str(workspace_file.get("workspace_path") or ""))
+        # A path is one bullet line. One carrying a control character is dropped
+        # rather than escaped, so it cannot forge lines of its own.
+        and all(ord(char) >= 0x20 and ord(char) != 0x7F for char in path)
     ]
     if not paths:
         return []

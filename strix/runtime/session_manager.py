@@ -87,6 +87,10 @@ def _extra_file_rel_path(workspace_path: str) -> str | None:
     rel = workspace_path[len(prefix) :].strip("/")
     if not rel or any(part in ("", ".", "..") for part in rel.split("/")):
         return None
+    # Control characters would let a path break out of the single line it is
+    # rendered on in the agent task, so the path is rejected rather than escaped.
+    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in rel):
+        return None
     return rel
 
 
@@ -135,10 +139,11 @@ def build_extra_file_entries(
     Each item is ``{"workspace_path": "/workspace/<rel>", "content": bytes|str}``;
     manifest backends materialize the entry at the requested path alongside the
     ``LocalDir`` source uploads. Invalid items — including paths that collide
-    with a ``local_sources`` tree, which would otherwise replace its manifest
-    entry — are skipped with a warning.
+    with a ``local_sources`` tree or with an earlier extra file, which would
+    otherwise replace its manifest entry — are skipped with a warning.
     """
     source_roots = _source_root_rels(local_sources)
+    placed: list[str] = []
     entries: dict[str | Path, BaseEntry] = {}
     for extra_file in extra_files:
         rel = _extra_file_rel_path(str(extra_file.get("workspace_path") or ""))
@@ -149,12 +154,14 @@ def build_extra_file_entries(
                 extra_file.get("workspace_path"),
             )
             continue
-        if _collides_with_source_root(rel, source_roots):
+        if _collides_with_source_root(rel, source_roots + placed):
             logger.warning(
-                "Skipping extra file colliding with a local source tree (workspace_path=%r)",
+                "Skipping extra file colliding with a local source tree or an "
+                "earlier extra file (workspace_path=%r)",
                 extra_file.get("workspace_path"),
             )
             continue
+        placed.append(rel)
         entries[rel] = File(content=content)
     return entries
 
@@ -170,10 +177,11 @@ def build_extra_file_bind_mounts(
     ``staging_dir`` (one numbered subdirectory per file to avoid basename
     collisions) and mounted read-only at the same ``/workspace/<rel>`` path the
     manifest path would use. Invalid items — including paths that collide with
-    a ``local_sources`` tree, which would duplicate or shadow its mount target
-    — are skipped with a warning.
+    a ``local_sources`` tree or with an earlier extra file, which would
+    duplicate or shadow its mount target — are skipped with a warning.
     """
     source_roots = _source_root_rels(local_sources)
+    placed: list[str] = []
     mounts: list[dict[str, Any]] = []
     for index, extra_file in enumerate(extra_files):
         rel = _extra_file_rel_path(str(extra_file.get("workspace_path") or ""))
@@ -184,12 +192,14 @@ def build_extra_file_bind_mounts(
                 extra_file.get("workspace_path"),
             )
             continue
-        if _collides_with_source_root(rel, source_roots):
+        if _collides_with_source_root(rel, source_roots + placed):
             logger.warning(
-                "Skipping extra file colliding with a local source tree (workspace_path=%r)",
+                "Skipping extra file colliding with a local source tree or an "
+                "earlier extra file (workspace_path=%r)",
                 extra_file.get("workspace_path"),
             )
             continue
+        placed.append(rel)
         host_file = staging_dir / str(index) / Path(rel).name
         host_file.parent.mkdir(parents=True, exist_ok=True)
         host_file.write_bytes(content)

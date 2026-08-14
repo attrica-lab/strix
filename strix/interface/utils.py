@@ -1707,6 +1707,10 @@ def _workspace_file_dest(spec: str, source: Path) -> str:
         raise ValueError(f"'{spec}' has an empty destination path")
     if any(part in ("", ".", "..") for part in candidate.split("/")):
         raise ValueError(f"'{spec}' has an invalid destination path: {candidate}")
+    # A control character would let the path span more than the one line it is
+    # rendered on in the agent task, so the whole spec is rejected.
+    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in candidate):
+        raise ValueError(f"'{spec}' has a control character in its destination path")
     return candidate
 
 
