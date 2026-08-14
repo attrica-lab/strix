@@ -17,7 +17,7 @@ Running Strix with local models allows for completely offline, privacy-first sec
 <Note>
 Strix requires advanced agent capabilities, including tool use, multi-step planning, and self-correction. Most local models under 70B parameters struggle with these tasks.
 
-Critical assessments often require capable cloud models. Local models suit assessments where privacy has priority.
+Critical assessments often require capable cloud models, such as Claude 4.5 Sonnet or GPT-5. Local models suit assessments where privacy has priority.
 </Note>
 
 ## Ollama
@@ -92,9 +92,9 @@ Configure the inference server to parse tool tokens into structured `tool_calls`
 - Set a low temperature, such as `--temp 0.2`, to improve tool-call reliability.
 
 **Ollama**
-- Use a recent Ollama version and a model whose template supports tools. Ollama refuses tools when the template lacks tool support.
-- For reasoning models such as qwen3, disable **thinking** mode. Thinking mode can move tool calls into `content` instead of `tool_calls`. Disable it in Ollama with a non-thinking model or `think: false`.
-- Raise **`num_ctx`** to at least 16k. Strix sends a large system prompt and many tool schemas. A small context can truncate the tool definitions and stop valid calls.
+- Use a recent Ollama version and a model whose template supports tools. Ollama returns `tools param requires --jinja flag` when the template lacks tool support.
+- For reasoning models such as qwen3, disable **thinking** mode. Thinking mode can move tool calls into `content` instead of `tool_calls`. Disable it in Ollama with a non-thinking model or `think: false` in the model parameters or `Modelfile`.
+- Raise **`num_ctx`** to at least 16k to 32k. Strix sends a large system prompt and many tool schemas. A small context can truncate the tool definitions and stop valid calls. A short test prompt can look fine while a real scan fails.
 
 **vLLM**
 - Start with `--enable-auto-tool-choice`, a matching `--tool-call-parser` (`hermes`, `qwen3_xml`, or `llama3_json`), and a matching `--reasoning-parser` for reasoning models.

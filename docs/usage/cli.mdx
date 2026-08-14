@@ -89,7 +89,7 @@ strix (--target <target> | --target-list <path>) [options]
     threshold is crossed (most relevant with several child agents running
     concurrently).
   - Cost is a best-effort estimate derived from token usage and model pricing.
-    providers that do not expose priced usage may under-count.
+    Providers that do not expose priced usage may under-count.
   - For LiteLLM-routed models, Strix enables streaming success callbacks to
     capture provider-reported cost. Message content remains excluded, but
     third-party LiteLLM callbacks configured in the same process can receive
@@ -148,6 +148,6 @@ strix --target-list ./targets.txt
 
 | Code | Meaning |
 |------|---------|
-| 0 | Scan completed successfully. In headless mode, no vulnerabilities were found. |
-| 1 | A fatal error occurred before or during the scan, such as missing variables, unavailable Docker, invalid configuration, or an unhandled error. |
+| 0 | Interactive mode always exits with `0`. In headless mode, `0` means that no vulnerabilities were found. |
+| 1 | A fatal error occurred before or during the scan. Causes include missing environment variables, unavailable Docker, an invalid config file, diff-scope resolution failure, or an unhandled error. |
 | 2 | Vulnerabilities found (headless mode only) |

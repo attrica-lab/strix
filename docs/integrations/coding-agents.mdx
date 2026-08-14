@@ -30,8 +30,10 @@ npx skills use usestrix/strix@penetration-testing-with-strix | claude
 
 Both options provide machine-readable results. Choose the option that fits your environment.
 
-- **Open-source CLI (self-hosted):** Runs locally in a Docker sandbox with your LLM key. This option is free and local.
+- **Open-source CLI (self-hosted):** Runs locally in a Docker sandbox with your LLM key. This option is free, local, and air-gap capable.
 - **Managed cloud:** Runs on Strix infrastructure through the [app.strix.ai REST API](https://docs.app.strix.ai). This option needs no Docker, LLM key, or local installation. The Enterprise plan adds dashboards, scheduling, pull request reviews, and PDF or DOCX reports.
+
+Create a managed API token under **Settings > API Access**. The `managed-pentesting-with-strix` skill documents the full flow.
 
 ## Agent-Friendly Interfaces
 
@@ -39,10 +41,25 @@ Everything an agent needs is machine-readable:
 
 - **Headless CLI:** `strix -n` runs without the TUI. It exits with `0` for a clean scan, `1` for an error, or `2` for vulnerabilities.
 - **REST API:** The managed platform exposes a documented [OpenAPI](https://docs.app.strix.ai/openapi.json) at `https://app.strix.ai/api/v1`.
-- **Structured results:** Each run writes reports under `strix_runs/<run-name>/`, including JSON, CSV, SARIF, and Markdown files.
+  The API supports:
+  - scans
+  - vulnerabilities
+  - assets
+  - pull request reviews
+  - schedules
+  - webhooks
+
+  The API uses bearer tokens and scopes.
+- **Structured results:** Each self-hosted run writes these files under `strix_runs/<run-name>/`:
+  - `vulnerabilities.json`
+  - `vulnerabilities.csv`
+  - `findings.sarif` in SARIF 2.1.0 format
+  - Per-finding Markdown files
+
+  The cloud exposes the same data as JSON and provides SARIF export.
 - **Budget controls:** `--max-budget` and `--max-turns` set cost and turn limits.
 - **`AGENTS.md`:** The [repository's agent guide](https://github.com/usestrix/strix/blob/main/AGENTS.md) provides a quick reference.
-- **`llms.txt`:** The index is available at [docs.strix.ai/llms.txt](https://docs.strix.ai/llms.txt). The full export is available at [docs.strix.ai/llms-full.txt](https://docs.strix.ai/llms-full.txt).
+- **`llms.txt`:** The index is available at [docs.strix.ai/llms.txt](https://docs.strix.ai/llms.txt). The full export is available at [docs.strix.ai/llms-full.txt](https://docs.strix.ai/llms-full.txt). Every page is also available as Markdown by appending `.md` to its URL.
 
 ## Example Prompts
 

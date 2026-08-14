@@ -61,6 +61,6 @@ The workflow fails when vulnerabilities are found:
 Use `quick` mode for PRs to keep feedback fast. Schedule `deep` scans nightly.
 </Tip>
 
-<Tip>
-For pull_request workflows, Strix automatically uses changed-files diff-scope in CI/headless runs. If diff resolution fails, ensure full history is fetched (`fetch-depth: 0`) or set `--diff-base`.
-</Tip>
+<Note>
+For `pull_request` workflows, Strix automatically uses changed-files diff-scope in CI/headless runs. If diff resolution fails, fetch full history with `fetch-depth: 0` or set `--diff-base`.
+</Note>
