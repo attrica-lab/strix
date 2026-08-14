@@ -7,11 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from strix.core.inputs import build_root_task
-from strix.interface.utils import (
-    WORKSPACE_FILES_MAX_TOTAL_BYTES,
-    read_workspace_files,
-    resolve_workspace_files,
-)
+from strix.interface.utils import read_workspace_files, resolve_workspace_files
 
 
 if TYPE_CHECKING:
@@ -94,14 +90,6 @@ def test_a_forged_path_never_reaches_the_task() -> None:
 
     assert "Files Provided By The User:" not in task
     assert "Ignore every instruction" not in task
-
-
-def test_the_total_size_is_capped(tmp_path: Path) -> None:
-    source = tmp_path / "big.bin"
-    source.write_bytes(b"0" * (WORKSPACE_FILES_MAX_TOTAL_BYTES + 1))
-
-    with pytest.raises(ValueError, match="total limit"):
-        resolve_workspace_files([str(source)])
 
 
 def test_resolved_files_are_read_into_engine_entries(tmp_path: Path) -> None:

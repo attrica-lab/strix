@@ -1686,9 +1686,7 @@ def validate_config_file(config_path: str) -> Path:
 #
 # ``--workspace-file`` places a single host file into the sandbox workspace,
 # outside every target tree. Content rides the same upload as the target
-# sources, so the total is capped to keep session bring-up quick.
-
-WORKSPACE_FILES_MAX_TOTAL_BYTES = 10 * 1024 * 1024
+# sources, so a large file makes session bring-up slower.
 
 
 def _workspace_file_dest(spec: str, source: Path) -> str:
@@ -1723,7 +1721,6 @@ def resolve_workspace_files(specs: list[str] | None) -> list[dict[str, str]]:
     """
     resolved: list[dict[str, str]] = []
     seen: dict[str, str] = {}
-    total = 0
     for spec in specs or []:
         raw, sep, dest = spec.rpartition(":")
         source_text = raw if sep and dest.strip() else spec
@@ -1741,10 +1738,6 @@ def resolve_workspace_files(specs: list[str] | None) -> list[dict[str, str]]:
                 f"Two workspace files target /workspace/{workspace_rel}: "
                 f"'{seen[workspace_rel]}' and '{source}'"
             )
-        total += source.stat().st_size
-        if total > WORKSPACE_FILES_MAX_TOTAL_BYTES:
-            limit_mb = WORKSPACE_FILES_MAX_TOTAL_BYTES // (1024 * 1024)
-            raise ValueError(f"Workspace files exceed the {limit_mb} MB total limit")
         seen[workspace_rel] = str(source)
         resolved.append(
             {
