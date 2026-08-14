@@ -8,7 +8,7 @@ Configure Strix using environment variables or a config file.
 ## LLM Configuration
 
 <ParamField path="STRIX_LLM" type="string" required>
-  Model name in LiteLLM format (e.g., `openai/gpt-5.4`, `anthropic/claude-sonnet-4-6`).
+  Model name in LiteLLM format (for example, `openai/gpt-5.4`, `anthropic/claude-sonnet-4-6`).
 </ParamField>
 
 <ParamField path="LLM_API_KEY" type="string">
@@ -20,7 +20,7 @@ Configure Strix using environment variables or a config file.
 </ParamField>
 
 <ParamField path="LLM_EXTRA_HEADERS" type="string">
-  Extra HTTP headers sent on every LLM request, as a JSON object (e.g.
+  Extra HTTP headers sent on every LLM request, as a JSON object (for example
   `{"X-Feature-Key":"value","X-Tenant":"acme"}`). Useful for OpenAI-compatible
   gateways that require attribution or routing headers in addition to the bearer
   token. The bearer token itself still comes from `LLM_API_KEY`. Applies to both
@@ -65,8 +65,8 @@ affecting the agents that do the actual testing.
 
 <ParamField path="DEDUPE_LLM_EXTRA_HEADERS" type="string">
   Optional JSON object of extra HTTP headers sent on every deduplication-model
-  request, e.g. `{"X-Feature-Key":"value"}`. A dedicated dedupe model never
-  inherits `LLM_EXTRA_HEADERS`; set this when its endpoint needs custom headers.
+  request, for example `{"X-Feature-Key":"value"}`. A dedicated dedupe model never
+  inherits `LLM_EXTRA_HEADERS`. Set this when its endpoint needs custom headers.
 </ParamField>
 
 <ParamField path="STRIX_DEDUPE_REASONING_EFFORT" type="string">
