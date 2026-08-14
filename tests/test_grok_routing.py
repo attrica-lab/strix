@@ -47,6 +47,17 @@ def test_provider_label_names_the_subscription() -> None:
     assert subscription.provider_label("openai/gpt-5.4") is None
 
 
+def test_litellm_model_name_maps_subscription_prefixes() -> None:
+    # Model metadata (context window, output cap) is keyed "xai/…" for Grok and
+    # bare for ChatGPT; the routing prefixes themselves are never LiteLLM keys.
+    assert subscription.litellm_model_name("grok/grok-4") == "xai/grok-4"
+    assert subscription.litellm_model_name("chatgpt/gpt-5.4") == "gpt-5.4"
+    # Non-subscription models pass through untouched.
+    assert subscription.litellm_model_name("xai/grok-4") == "xai/grok-4"
+    assert subscription.litellm_model_name("openai/gpt-5.4") == "openai/gpt-5.4"
+    assert subscription.litellm_model_name(None) is None
+
+
 def test_run_record_reports_grok_provider(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     settings = mock.MagicMock()
     settings.llm.model = "grok/grok-4"
