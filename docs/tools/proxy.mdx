@@ -3,7 +3,7 @@ title: "HTTP Proxy"
 description: "Caido-powered proxy for request interception and replay"
 ---
 
-Strix includes [Caido](https://caido.io), a modern HTTP proxy built for security testing. All browser traffic flows through Caido, giving the agent full control over requests and responses.
+Strix includes [Caido](https://caido.io), a modern HTTP proxy for security testing. Strix routes browser traffic through Caido, so the agent can inspect and modify requests and responses.
 
 ## Capabilities
 
@@ -70,10 +70,9 @@ asyncio.run(main())
 | `view_sitemap_entry()` | Inspect one sitemap entry + its related requests |
 | `scope_rules()`        | Manage proxy scope (allowlist/denylist)    |
 
-For one-off arbitrary requests, use shell tooling like `curl` — the
-sandbox's `HTTP_PROXY` env routes the traffic through Caido
-automatically, so it lands in `list_requests` and can be replayed via
-`repeat_request`.
+For one-off requests, use shell tools such as `curl`.
+The sandbox routes traffic through Caido with the `HTTP_PROXY` variable.
+Caido then adds each request to `list_requests` for replay through `repeat_request`.
 
 ### Example: Automated IDOR Testing
 
@@ -106,24 +105,24 @@ asyncio.run(main())
 
 ## Human-in-the-Loop
 
-Strix exposes the Caido proxy to your host machine, so you can interact with it alongside the automated scan. When the sandbox starts, the Caido URL is displayed in the TUI sidebar — click it to copy, then open it in Caido Desktop.
+Strix exposes the Caido proxy to the host machine during automated scans. The TUI displays the Caido URL in the sidebar.
 
 ### Accessing Caido
 
 1. Start a scan as usual
-2. Look for the **Caido** URL in the sidebar stats panel (e.g. `localhost:52341`)
+2. Find the **Caido** URL in the sidebar stats panel, such as `localhost:52341`
 3. Open the URL in Caido Desktop
 4. Click **Continue as guest** to access the instance
 
 ### What You Can Do
 
-- **Inspect traffic** — Browse all HTTP/HTTPS requests the agent is making in real time
-- **Replay requests** — Take any captured request and resend it with your own modifications
-- **Intercept and modify** — Pause requests mid-flight, edit them, then forward
-- **Explore the sitemap** — See the full attack surface the agent has discovered
-- **Manual testing** — Use Caido's tools to test findings the agent reports, or explore areas it hasn't reached
+- **Inspect traffic:** Browse HTTP/HTTPS requests that the agent makes
+- **Replay requests:** Resend captured requests after you modify them
+- **Intercept and modify:** Pause requests, edit them, and forward them
+- **Explore the sitemap:** Review the attack surface that the agent discovered
+- **Manual testing:** Use Caido tools to test reported findings or unexplored areas
 
-This turns Strix from a fully automated scanner into a collaborative tool — the agent handles the heavy lifting while you focus on the interesting parts.
+Strix supports collaborative testing. The agent performs automated work while you investigate important areas.
 
 ## Scope
 

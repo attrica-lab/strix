@@ -81,10 +81,10 @@ jobs:
           command: strix -n -t ./ --scan-mode quick
 ```
 
-<Note>
-All CI platforms require Docker access. Ensure your runner has Docker available.
-</Note>
-
 <Tip>
-If diff-scope fails in CI, fetch full git history (for example, `fetch-depth: 0` in GitHub Actions) so merge-base and branch comparison can be resolved.
+All CI platforms require Docker access. Ensure your runner has Docker available.
 </Tip>
+
+<Note>
+If diff-scope fails in CI, fetch full git history (for example, `fetch-depth: 0` in GitHub Actions) so merge-base and branch comparison can be resolved.
+</Note>

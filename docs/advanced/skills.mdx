@@ -3,13 +3,13 @@ title: "Skills"
 description: "Specialized knowledge packages that enhance agent capabilities"
 ---
 
-Skills are structured knowledge packages that give Strix agents deep expertise in specific vulnerability types, technologies, and testing methodologies.
+Skills are structured knowledge packages that give Strix agents specialized knowledge about vulnerability types, technologies, and testing methods.
 
 ## The Idea
 
-LLMs have broad but shallow security knowledge. They know _about_ SQL injection, but lack the nuanced techniques that experienced pentesters use—parser quirks, bypass methods, validation tricks, and chain attacks.
+LLMs have broad but shallow security knowledge. They know _about_ SQL injection but lack the nuanced techniques that experienced pentesters use, such as parser quirks, bypass methods, validation tricks, and chain attacks.
 
-Skills inject this deep, specialized knowledge directly into the agent's context, transforming it from a generalist into a specialist for the task at hand.
+Skills inject specialized knowledge into the agent's context. This knowledge helps the agent specialize in the current task.
 
 ## How They Work
 
@@ -25,9 +25,9 @@ create_agent(
 
 The skills are injected into the agent's system prompt, giving it access to:
 
-- **Advanced techniques** — Non-obvious methods beyond standard testing
-- **Working payloads** — Practical examples with variations
-- **Validation methods** — How to confirm findings and avoid false positives
+- **Advanced techniques:** Non-obvious methods beyond standard testing
+- **Working payloads:** Practical examples with variations
+- **Validation methods:** How to confirm findings and avoid false positives
 
 ## Skill Categories
 
@@ -138,7 +138,7 @@ How to confirm findings and avoid false positives.
 
 Community contributions are welcome. Create a `.md` file in the appropriate category with YAML frontmatter (`name` and `description` fields). Good skills include:
 
-1. **Real-world techniques** — Methods that work in practice
-2. **Practical payloads** — Working examples with variations
-3. **Validation steps** — How to confirm without false positives
-4. **Context awareness** — Version/environment-specific behavior
+1. **Real-world techniques:** Methods that work in practice
+2. **Practical payloads:** Working examples with variations
+3. **Validation steps:** How to confirm without false positives
+4. **Context awareness:** Version and environment-specific behavior
