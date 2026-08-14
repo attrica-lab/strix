@@ -1,6 +1,6 @@
 ---
 name: api-security-testing
-description: Security-test a REST, GraphQL, or gRPC API with Strix — autonomous agents that enumerate endpoints from an OpenAPI/GraphQL schema (or by crawling), then actually exploit the API-specific vulnerability classes the OWASP API Security Top 10 covers — broken object-level authorization (BOLA/IDOR), broken function-level authorization, excessive data exposure, mass assignment, injection, SSRF, and auth/token flaws. Every finding comes with a working proof-of-concept request. Use when the user asks to pentest, security-test, audit, or find vulnerabilities in an API, endpoint, or backend service.
+description: Security-test a REST, GraphQL, or gRPC API with Strix — autonomous agents that enumerate endpoints from an OpenAPI/GraphQL schema (or by crawling), then actually exploit the API-specific vulnerability classes in the OWASP API Security Top 10 (2023) — broken object-level authorization (BOLA/IDOR), broken object property level authorization (excessive data exposure and mass assignment), broken function-level authorization, unrestricted resource consumption, SSRF, injection, and auth/token flaws. Every finding comes with a working proof-of-concept request. Use when the user asks to pentest, security-test, audit, or find vulnerabilities in an API, endpoint, or backend service.
 license: Apache-2.0
 metadata:
   author: usestrix
@@ -9,7 +9,7 @@ metadata:
 
 # Security-test an API
 
-APIs fail differently from web UIs: there's no rendered surface to crawl, the interesting bugs are authorization-shaped rather than injection-shaped, and the same endpoint behaves differently per token. This workflow targets those specifics with Strix's autonomous agents.
+APIs fail differently from web UIs: there's no rendered surface to crawl, the interesting bugs are authorization-shaped rather than injection-shaped, and the same endpoint behaves differently per token. This workflow targets those specifics with Strix's autonomous agents, using the current [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/) as the coverage checklist. For the web-app equivalent, the current edition is the OWASP Top 10:2025 — see **owasp-top-10-testing**.
 
 Install, LLM setup, full CLI flags, and the managed-cloud path are in the **penetration-testing-with-strix** skill. Read it if `strix --version` fails or the target isn't an API.
 
@@ -20,8 +20,8 @@ APIs are near-impossible to test blind, so collect first:
 | Input | Why it matters |
 |---|---|
 | **Schema** — OpenAPI/Swagger URL or file, GraphQL endpoint (introspection), or `.proto` | Turns guesswork into full endpoint enumeration. Biggest single win in coverage. |
-| **Two sets of credentials/tokens**, ideally in different tenants | BOLA/IDOR — the #1 API vulnerability class — can only be *proven* by accessing tenant A's objects with tenant B's token. |
-| **A low-privilege and a high-privilege token** | Required to prove broken function-level authorization (a `user` calling admin-only routes). |
+| **Two sets of credentials/tokens**, ideally in different tenants | BOLA/IDOR — API1:2023, still the #1 API risk — can only be *proven* by accessing tenant A's objects with tenant B's token. |
+| **A low-privilege and a high-privilege token** | Required to prove broken function-level authorization (API5:2023 — a `user` calling admin-only routes). |
 | **Example object IDs** | Lets agents test ID tampering immediately instead of hunting for valid identifiers. |
 | **Out-of-scope routes** | Payments, mass notification, destructive admin endpoints. |
 | **Rate limits / WAF** in front of the API | Avoids agents burning budget on throttled requests; mention them so testing adapts. |
@@ -36,7 +36,7 @@ strix -n -t https://api.staging.example.com --max-budget 20 \
 Tenant A token: <tokenA> (org 1111, user id 11, order id 501).
 Tenant B token: <tokenB> (org 2222, user id 22).
 Admin token: <tokenAdmin>.
-Focus: BOLA/IDOR across orgs, function-level authz on /admin/*, mass assignment on PATCH /users/{id}, excessive data exposure in list responses.
+Focus: BOLA across orgs (API1), function-level authz on /admin/* (API5), object property level authz on PATCH /users/{id} — both mass assignment and over-exposed fields in list responses (API3), unrestricted resource consumption (API4).
 Out of scope: POST /billing/*, POST /notifications/broadcast."
 ```
 
