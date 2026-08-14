@@ -1,6 +1,6 @@
 ---
 name: api-security-testing
-description: Security-test a REST, GraphQL, or gRPC API with Strix — autonomous agents that enumerate endpoints from an OpenAPI/GraphQL schema (or by crawling), then actually exploit the API-specific vulnerability classes the OWASP API Security Top 10 covers: broken object-level authorization (BOLA/IDOR), broken function-level authorization, excessive data exposure, mass assignment, injection, SSRF, and auth/token flaws. Every finding comes with a working proof-of-concept request. Use when the user asks to pentest, security-test, audit, or find vulnerabilities in an API, endpoint, or backend service.
+description: Security-test a REST, GraphQL, or gRPC API with Strix — autonomous agents that enumerate endpoints from an OpenAPI/GraphQL schema (or by crawling), then actually exploit the API-specific vulnerability classes the OWASP API Security Top 10 covers — broken object-level authorization (BOLA/IDOR), broken function-level authorization, excessive data exposure, mass assignment, injection, SSRF, and auth/token flaws. Every finding comes with a working proof-of-concept request. Use when the user asks to pentest, security-test, audit, or find vulnerabilities in an API, endpoint, or backend service.
 license: Apache-2.0
 metadata:
   author: usestrix
