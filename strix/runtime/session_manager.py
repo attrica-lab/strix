@@ -90,6 +90,33 @@ def _extra_file_rel_path(workspace_path: str) -> str | None:
     return rel
 
 
+def _source_root_rels(local_sources: list[dict[str, Any]] | None) -> list[str]:
+    """Workspace-relative roots the local sources occupy (e.g. ``["repo"]``)."""
+    if not local_sources:
+        return []
+    return [
+        str(src.get("workspace_subdir") or "").strip("/")
+        for src in local_sources
+        if src.get("workspace_subdir") and src.get("source_path")
+    ]
+
+
+def _collides_with_source_root(rel: str, source_roots: list[str]) -> bool:
+    """True when an extra-file path would land on or inside a source tree.
+
+    An exact match would replace the whole source tree with one file (a
+    manifest ``entries`` key collision); a path nested under a source root
+    would race the source upload; a path that is an ancestor of a source root
+    would shadow the directory the source materializes into.
+    """
+    for root in source_roots:
+        if not root:
+            continue
+        if rel == root or rel.startswith(f"{root}/") or root.startswith(f"{rel}/"):
+            return True
+    return False
+
+
 def _extra_file_content(extra_file: dict[str, Any]) -> bytes | None:
     content = extra_file.get("content")
     if isinstance(content, bytes | bytearray):
@@ -99,13 +126,19 @@ def _extra_file_content(extra_file: dict[str, Any]) -> bytes | None:
     return None
 
 
-def build_extra_file_entries(extra_files: list[dict[str, Any]]) -> dict[str | Path, BaseEntry]:
+def build_extra_file_entries(
+    extra_files: list[dict[str, Any]],
+    local_sources: list[dict[str, Any]] | None = None,
+) -> dict[str | Path, BaseEntry]:
     """Map extra files to in-memory ``File`` manifest entries.
 
     Each item is ``{"workspace_path": "/workspace/<rel>", "content": bytes|str}``;
     manifest backends materialize the entry at the requested path alongside the
-    ``LocalDir`` source uploads. Invalid items are skipped with a warning.
+    ``LocalDir`` source uploads. Invalid items — including paths that collide
+    with a ``local_sources`` tree, which would otherwise replace its manifest
+    entry — are skipped with a warning.
     """
+    source_roots = _source_root_rels(local_sources)
     entries: dict[str | Path, BaseEntry] = {}
     for extra_file in extra_files:
         rel = _extra_file_rel_path(str(extra_file.get("workspace_path") or ""))
@@ -116,6 +149,12 @@ def build_extra_file_entries(extra_files: list[dict[str, Any]]) -> dict[str | Pa
                 extra_file.get("workspace_path"),
             )
             continue
+        if _collides_with_source_root(rel, source_roots):
+            logger.warning(
+                "Skipping extra file colliding with a local source tree (workspace_path=%r)",
+                extra_file.get("workspace_path"),
+            )
+            continue
         entries[rel] = File(content=content)
     return entries
 
@@ -123,14 +162,18 @@ def build_extra_file_entries(extra_files: list[dict[str, Any]]) -> dict[str | Pa
 def build_extra_file_bind_mounts(
     extra_files: list[dict[str, Any]],
     staging_dir: Path,
+    local_sources: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Stage extra files on the host and map them to read-only bind mounts.
 
     Bind-mount backends bypass the manifest, so the content is written under
     ``staging_dir`` (one numbered subdirectory per file to avoid basename
     collisions) and mounted read-only at the same ``/workspace/<rel>`` path the
-    manifest path would use. Invalid items are skipped with a warning.
+    manifest path would use. Invalid items — including paths that collide with
+    a ``local_sources`` tree, which would duplicate or shadow its mount target
+    — are skipped with a warning.
     """
+    source_roots = _source_root_rels(local_sources)
     mounts: list[dict[str, Any]] = []
     for index, extra_file in enumerate(extra_files):
         rel = _extra_file_rel_path(str(extra_file.get("workspace_path") or ""))
@@ -138,6 +181,12 @@ def build_extra_file_bind_mounts(
         if rel is None or content is None:
             logger.warning(
                 "Skipping invalid extra file entry (workspace_path=%r)",
+                extra_file.get("workspace_path"),
+            )
+            continue
+        if _collides_with_source_root(rel, source_roots):
+            logger.warning(
+                "Skipping extra file colliding with a local source tree (workspace_path=%r)",
                 extra_file.get("workspace_path"),
             )
             continue
@@ -224,12 +273,14 @@ async def create_or_reuse(
         entries: dict[str | Path, BaseEntry] = {}
         if extra_files:
             staging_dir = runtime_state_dir(run_dir_for(scan_id)) / "extra_files"
-            bind_mounts.extend(build_extra_file_bind_mounts(extra_files, staging_dir))
+            bind_mounts.extend(
+                build_extra_file_bind_mounts(extra_files, staging_dir, local_sources)
+            )
     else:
         bind_mounts = []
         entries = build_manifest_entries(local_sources)
         if extra_files:
-            entries.update(build_extra_file_entries(extra_files))
+            entries.update(build_extra_file_entries(extra_files, local_sources))
 
     # Caido runs as an in-container sidecar; HTTP(S) traffic from any
     # process started via ``session.exec`` (the SDK's Shell tool, etc.)

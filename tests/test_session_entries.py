@@ -203,6 +203,43 @@ def test_extra_file_invalid_paths_and_content_are_skipped() -> None:
     )
 
 
+def test_extra_file_colliding_with_a_source_tree_is_skipped(tmp_path: Path) -> None:
+    sources = [_source("repo", str(tmp_path))]
+    colliding = [
+        {"workspace_path": "/workspace/repo", "content": b"x"},  # exact: would drop the tree
+        {"workspace_path": "/workspace/repo/inside.txt", "content": b"x"},  # nested inside it
+        {"workspace_path": "/workspace/repo/deep/inside.txt", "content": b"x"},
+    ]
+
+    assert build_extra_file_entries(colliding, sources) == {}
+    assert build_extra_file_bind_mounts(colliding, tmp_path / "staging", sources) == []
+
+
+def test_extra_file_shadowing_a_nested_source_root_is_skipped(tmp_path: Path) -> None:
+    sources = [_source("nested/repo", str(tmp_path))]
+    shadowing = [{"workspace_path": "/workspace/nested", "content": b"x"}]
+
+    assert build_extra_file_entries(shadowing, sources) == {}
+    assert build_extra_file_bind_mounts(shadowing, tmp_path / "staging", sources) == []
+
+
+def test_extra_file_beside_a_source_tree_is_kept(tmp_path: Path) -> None:
+    sources = [_source("repo", str(tmp_path))]
+    beside = [
+        {"workspace_path": "/workspace/.strix/dependency-issues.jsonl", "content": b"{}\n"},
+        {"workspace_path": "/workspace/repo-notes.txt", "content": b"x"},  # sibling, no prefix
+    ]
+
+    entries = build_extra_file_entries(beside, sources)
+    mounts = build_extra_file_bind_mounts(beside, tmp_path / "staging", sources)
+
+    assert set(entries) == {".strix/dependency-issues.jsonl", "repo-notes.txt"}
+    assert [m["target"] for m in mounts] == [
+        "/workspace/.strix/dependency-issues.jsonl",
+        "/workspace/repo-notes.txt",
+    ]
+
+
 def test_extra_file_becomes_read_only_bind_mount_of_staged_copy(tmp_path: Path) -> None:
     staging = tmp_path / "staging"
 
