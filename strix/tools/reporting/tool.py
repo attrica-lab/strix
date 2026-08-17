@@ -749,6 +749,54 @@ def _validate_manifest_path(manifest_path: str | None) -> str | None:
     return None
 
 
+# CVSS v3.1 environmental metrics an agent may set on a dependency finding,
+# with their legal values. The base metrics are deliberately absent: they come
+# from the published advisory, so a report can never restate them.
+_CVSS_ENVIRONMENTAL_VALUES: dict[str, frozenset[str]] = {
+    "MAV": frozenset("NALP"),
+    "MAC": frozenset("LH"),
+    "MPR": frozenset("NLH"),
+    "MUI": frozenset("NR"),
+    "MS": frozenset("UC"),
+    "MC": frozenset("HLN"),
+    "MI": frozenset("HLN"),
+    "MA": frozenset("HLN"),
+    "CR": frozenset("HML"),
+    "IR": frozenset("HML"),
+    "AR": frozenset("HML"),
+}
+_MAX_CONTEXTUAL_REASONING_CHARS = 2000
+
+
+def _clean_contextual_cvss_metrics(raw: dict[str, str] | None) -> dict[str, str]:
+    """Keep only well-formed CVSS environmental metrics from a report."""
+    if not isinstance(raw, dict):
+        return {}
+    metrics: dict[str, str] = {}
+    for key, value in raw.items():
+        metric = str(key or "").strip().upper()
+        metric_value = str(value or "").strip().upper()
+        allowed = _CVSS_ENVIRONMENTAL_VALUES.get(metric)
+        if allowed and metric_value in allowed:
+            metrics[metric] = metric_value
+    return metrics
+
+
+def _clean_contextual_cvss_metric_reasoning(
+    raw: dict[str, str] | None, metrics: dict[str, str]
+) -> dict[str, str]:
+    """Keep per-metric justifications that belong to an adjusted metric."""
+    if not isinstance(raw, dict):
+        return {}
+    detail: dict[str, str] = {}
+    for key, value in raw.items():
+        metric = str(key or "").strip().upper()
+        text = str(value or "").strip()
+        if metric in metrics and text:
+            detail[metric] = text[:_MAX_CONTEXTUAL_REASONING_CHARS]
+    return detail
+
+
 def _build_dependency_metadata(
     *,
     package_name: str,
@@ -760,8 +808,11 @@ def _build_dependency_metadata(
     manifest_path: str | None = None,
     reachability: str | None = None,
     reachability_evidence: str | None = None,
-) -> dict[str, str]:
-    metadata = {
+    contextual_cvss_metrics: dict[str, str] | None = None,
+    contextual_cvss_reasoning: str | None = None,
+    contextual_cvss_metric_reasoning: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
         "package_name": package_name.strip(),
         "installed_version": installed_version.strip(),
     }
@@ -781,6 +832,18 @@ def _build_dependency_metadata(
         metadata["reachability"] = reachability.strip()
         if reachability_evidence and reachability_evidence.strip():
             metadata["reachability_evidence"] = reachability_evidence.strip()
+    # Contextual CVSS is only meaningful as metrics plus the reasoning a reader
+    # can check, so an incomplete pair is dropped.
+    cleaned_metrics = _clean_contextual_cvss_metrics(contextual_cvss_metrics)
+    reasoning = str(contextual_cvss_reasoning or "").strip()
+    if cleaned_metrics and reasoning:
+        metadata["contextual_cvss_metrics"] = cleaned_metrics
+        metadata["contextual_cvss_reasoning"] = reasoning[:_MAX_CONTEXTUAL_REASONING_CHARS]
+        metric_reasoning = _clean_contextual_cvss_metric_reasoning(
+            contextual_cvss_metric_reasoning, cleaned_metrics
+        )
+        if metric_reasoning:
+            metadata["contextual_cvss_metric_reasoning"] = metric_reasoning
     return metadata
 
 
@@ -852,6 +915,9 @@ async def _do_create_dependency(  # noqa: PLR0912
     manifest_path: str | None = None,
     reachability: str = "unknown",
     reachability_evidence: str | None = None,
+    contextual_cvss_metrics: dict[str, str] | None = None,
+    contextual_cvss_reasoning: str | None = None,
+    contextual_cvss_metric_reasoning: dict[str, str] | None = None,
     agent_id: str | None = None,
     agent_name: str | None = None,
 ) -> dict[str, Any]:
@@ -904,6 +970,13 @@ async def _do_create_dependency(  # noqa: PLR0912
             "govulncheck call path). Never claim a reachability level without evidence."
         )
 
+    if contextual_cvss_metrics and not (contextual_cvss_reasoning or "").strip():
+        errors.append(
+            "contextual_cvss_reasoning is required when contextual_cvss_metrics is set: "
+            "state in one or two sentences what you observed in this codebase that "
+            "justifies the adjustment. An adjusted score with no reasoning is not shown."
+        )
+
     if advisory_cvss is None:
         errors.append(
             "advisory_cvss is required: read the published advisory base score "
@@ -927,6 +1000,9 @@ async def _do_create_dependency(  # noqa: PLR0912
         manifest_path=manifest_path,
         reachability=reachability,
         reachability_evidence=reachability_evidence,
+        contextual_cvss_metrics=contextual_cvss_metrics,
+        contextual_cvss_reasoning=contextual_cvss_reasoning,
+        contextual_cvss_metric_reasoning=contextual_cvss_metric_reasoning,
     )
     evidence = _build_dependency_evidence(
         cve=parsed_cve,
@@ -1038,6 +1114,9 @@ async def create_dependency_report(
     dependency_path: str | None = None,
     reachability: str = "unknown",
     reachability_evidence: str | None = None,
+    contextual_cvss_metrics: dict[str, str] | None = None,
+    contextual_cvss_reasoning: str | None = None,
+    contextual_cvss_metric_reasoning: dict[str, str] | None = None,
 ) -> str:
     """File a known-CVE dependency (SCA) finding — one report per CVE x package.
 
@@ -1131,6 +1210,46 @@ async def create_dependency_report(
             (required for any level other than ``unknown``): repo-relative
             ``file:line`` of the import or symbol usage, the matched
             advisory symbols, or the govulncheck call-path excerpt.
+        contextual_cvss_metrics: Optional CVSS v3.1 **environmental**
+            metrics that reframe the published score for this codebase,
+            as a mapping of metric to value: ``MAV`` (N/A/L/P), ``MAC``
+            (L/H), ``MPR`` (N/L/H), ``MUI`` (N/R), ``MS`` (U/C), ``MC`` /
+            ``MI`` / ``MA`` (H/L/N), ``CR`` / ``IR`` / ``AR`` (H/M/L).
+            Set only the metrics your evidence supports (for example
+            ``{"MAC": "H", "MC": "L"}`` when the vulnerable path needs a
+            precondition this deployment enforces and the data at risk is
+            limited). Base the values on a **source-to-sink trace**: start
+            at the entry point that carries untrusted input (HTTP route,
+            CLI argument, queue message, webhook, config file), follow
+            each hop of the data through this codebase, and end at the
+            vulnerable package call site. Go one step deeper whenever a
+            hop is a wrapper — never stop at the first caller. Adjust
+            ``MAV`` / ``MPR`` / ``MUI`` from what that entry point
+            actually requires, and ``MC`` / ``MI`` / ``MA`` from the data
+            and privileges reachable at the sink. You never supply base
+            metrics or a score: the base vector comes from the advisory
+            and the adjusted score is computed from the resulting vector.
+            Omit the field when the trace does not change the published
+            rating, or when you could not complete the trace.
+        contextual_cvss_reasoning: **Required whenever**
+            ``contextual_cvss_metrics`` is set. Two to four detailed
+            sentences that a reviewer can verify without opening the repo:
+            how the application uses the package, which call sites or
+            configuration you inspected (repo-relative ``file:line``),
+            which input reaches the vulnerable code and whether an
+            attacker controls it, and what the adjustment therefore
+            changes. State the source-to-sink chain explicitly, hop by
+            hop, as ``entry point -> intermediate call -> package call``
+            with a ``file:line`` for each hop. Cite concrete evidence,
+            never a generic statement such as "low risk". The user reads
+            this text next to the adjusted score, so an adjustment
+            without it is discarded.
+        contextual_cvss_metric_reasoning: Optional per-metric detail, as a
+            mapping of the SAME metric names you set in
+            ``contextual_cvss_metrics`` to one detailed sentence each
+            (for example ``{"MAC": "Reaching the parser needs the
+            --unsafe flag, which deploy/prod.yaml never sets."}``).
+            Entries for metrics you did not adjust are dropped.
     """
     agent_id, agent_name = _caller_identity(ctx)
 
@@ -1155,6 +1274,9 @@ async def create_dependency_report(
         manifest_path=manifest_path,
         reachability=reachability,
         reachability_evidence=reachability_evidence,
+        contextual_cvss_metrics=contextual_cvss_metrics,
+        contextual_cvss_reasoning=contextual_cvss_reasoning,
+        contextual_cvss_metric_reasoning=contextual_cvss_metric_reasoning,
         agent_id=agent_id,
         agent_name=agent_name,
     )

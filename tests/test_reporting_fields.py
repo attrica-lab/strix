@@ -372,7 +372,7 @@ async def test_dependency_report_omits_unknown_reachability(report_state: Report
         fix_effort="low",
     )
 
-    assert result["success"] is True
+    assert result["success"] is True, result
     metadata = report_state.vulnerability_reports[0]["dependency_metadata"]
     assert "reachability" not in metadata
     assert "reachability_evidence" not in metadata
@@ -877,3 +877,76 @@ def test_vuln_tool_exposes_new_params() -> None:
     dep_required = create_dependency_report.params_json_schema["required"]
     assert "package_ecosystem" in dep_required
     assert "advisory_cvss" in dep_required
+
+
+def test_dep_tool_exposes_contextual_cvss_params() -> None:
+    dep_props = create_dependency_report.params_json_schema["properties"]
+    for field in (
+        "contextual_cvss_metrics",
+        "contextual_cvss_reasoning",
+        "contextual_cvss_metric_reasoning",
+    ):
+        assert field in dep_props
+    assert "source-to-sink" in dep_props["contextual_cvss_metrics"]["description"].lower()
+    assert "file:line" in dep_props["contextual_cvss_reasoning"]["description"].lower()
+
+
+@pytest.mark.asyncio
+async def test_dependency_report_keeps_only_valid_contextual_metrics(
+    report_state: ReportState,
+) -> None:
+    result = await _do_create_dependency(
+        title="CVE-2021-23337 in lodash 4.17.20",
+        description="Command injection via template.",
+        target="repo/package.json",
+        cve="CVE-2021-23337",
+        package_name="lodash",
+        installed_version="4.17.20",
+        impact="Arbitrary command execution.",
+        remediation_steps="Upgrade to 4.17.21.",
+        assumptions="Assumes the template sink is reachable.",
+        package_ecosystem="npm",
+        advisory_cvss=7.2,
+        technical_analysis=None,
+        fixed_version="4.17.21",
+        cwe="CWE-94",
+        fix_effort="trivial",
+        manifest_path="package-lock.json",
+        contextual_cvss_metrics={"MAC": "H", "MC": "L", "AV": "N", "MPR": "Z"},
+        contextual_cvss_reasoning="Only scripts/import.py reaches the sink.",
+        contextual_cvss_metric_reasoning={"MAC": "Needs a build flag.", "MPR": "dropped"},
+    )
+    assert result["success"] is True, result
+    metadata = report_state.vulnerability_reports[0]["dependency_metadata"]
+    assert metadata["contextual_cvss_metrics"] == {"MAC": "H", "MC": "L"}
+    assert metadata["contextual_cvss_reasoning"] == "Only scripts/import.py reaches the sink."
+    assert metadata["contextual_cvss_metric_reasoning"] == {"MAC": "Needs a build flag."}
+
+
+@pytest.mark.asyncio
+async def test_dependency_report_rejects_contextual_metrics_without_reasoning(
+    report_state: ReportState,
+) -> None:
+    result = await _do_create_dependency(
+        title="CVE-2021-23337 in lodash 4.17.20",
+        description="Command injection via template.",
+        target="repo/package.json",
+        cve="CVE-2021-23337",
+        package_name="lodash",
+        installed_version="4.17.20",
+        impact="Arbitrary command execution.",
+        remediation_steps="Upgrade to 4.17.21.",
+        assumptions="Assumes the template sink is reachable.",
+        package_ecosystem="npm",
+        advisory_cvss=7.2,
+        technical_analysis=None,
+        fixed_version="4.17.21",
+        cwe="CWE-94",
+        fix_effort="trivial",
+        manifest_path="package-lock.json",
+        contextual_cvss_metrics={"MAC": "H"},
+        contextual_cvss_reasoning="   ",
+    )
+    assert result["success"] is False
+    assert any("contextual_cvss_reasoning is required" in error for error in result["errors"])
+    assert report_state.vulnerability_reports == []

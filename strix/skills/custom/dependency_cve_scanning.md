@@ -234,6 +234,67 @@ findings and rejects empty PoC fields):
   the advisory score.
 - Set `reachability` + `reachability_evidence` from the usage analysis above;
   use `assumptions` for anything softer (confidence, caveats, analysis limits).
+- Set `contextual_cvss_metrics` + `contextual_cvss_reasoning` when this codebase
+  clearly changes the risk the published score describes (see below).
+
+### Contextual (environmental) CVSS
+
+The published score rates the CVE in the abstract. `contextual_cvss_metrics`
+rates it **here**, in this codebase, with CVSS v3.1 environmental metrics. The
+advisory's base metrics stay fixed — you never restate them and never pass a
+score, the adjusted score is computed from the resulting vector.
+
+Set only what your usage analysis supports:
+
+- `MAV` `N`/`A`/`L`/`P` — the attack vector as deployed. A library reached only
+  by a local CLI is `L`, not `N`.
+- `MAC` `L`/`H` — raise to `H` when the vulnerable path needs a precondition the
+  code enforces (input validation, a non-default flag, an internal-only route).
+- `MPR` `N`/`L`/`H`, `MUI` `N`/`R` — privileges or interaction this deployment
+  requires before the path is reachable.
+- `MS` `U`/`C` — whether exploitation here escapes the component boundary.
+- `MC`/`MI`/`MA` `H`/`L`/`N` — the impact in this codebase. `not_imported` code
+  the build still ships is usually `N` across all three.
+- `CR`/`IR`/`AR` `H`/`M`/`L` — the security requirement of the data or service
+  the package handles (credentials or payment data raise `CR`).
+
+Ground every metric in a **source-to-sink trace**, not in a general impression
+of the package. Before you set any metric:
+
+1. Find the sink: the exact line where this codebase calls the vulnerable
+   function or class of the package.
+2. Walk backwards hop by hop to the source: the entry point that carries
+   untrusted input (HTTP route, CLI argument, queue or webhook payload,
+   uploaded file, config value). Read each intermediate function. When a hop
+   is a thin wrapper, go one step deeper — never stop at the first caller.
+3. Record what each hop enforces: authentication, a role check, validation, a
+   feature flag, a size or type limit, a default that is off in production.
+4. Derive the metrics from that chain. `MAV`, `MPR`, and `MUI` come from what
+   the source requires. `MAC` comes from the preconditions on the hops. `MC`,
+   `MI`, and `MA` come from the data and privileges available at the sink.
+   `CR`, `IR`, and `AR` come from what that data is worth.
+
+If the chain breaks — no source reaches the sink, or you cannot follow a hop —
+say so and omit the contextual fields instead of guessing.
+
+`contextual_cvss_reasoning` is required with the metrics. Write two to four
+sentences that another engineer can check without opening the repository. Name
+the chain hop by hop as `entry point -> intermediate call -> package call`, with
+a repository-relative `file:line` for each hop, say who controls the input, and
+say what the adjustment changes. Example: `{"MAC": "H", "MC": "L"}` with "The
+only caller of `yaml.load` is `parse_manifest` in `scripts/import.py:88`, which
+`cli/commands.py:212` invokes for an operator-supplied path behind the
+`--allow-unsafe-import` flag that `deploy/prod.yaml` never sets. No HTTP route
+reaches that function, so an attacker must already hold shell access on the job
+host, and the parsed data is build metadata rather than customer records."
+
+`contextual_cvss_metric_reasoning` is optional and takes one detailed sentence
+per metric you adjusted, keyed by the metric name. Use it for the per-metric
+detail that does not fit the summary.
+
+Omit all the contextual fields when the published rating already fits, and when
+the evidence is thin. A contextual score is a claim you must be able to defend,
+and this adjustment never replaces `advisory_cvss`.
 
 Verify the CVE with `web_search` when available before reporting. Never guess or
 hallucinate a CVE id.
@@ -251,3 +312,5 @@ hallucinate a CVE id.
 - Do not downgrade advisory severity for lack of dynamic reproduction.
 - Do not claim a `reachability` level the evidence does not prove — `unknown`
   with a reason is always acceptable; an overclaimed level never is.
+- Do not send `contextual_cvss_metrics` without evidence-backed reasoning, and
+  do not use it to quietly de-rate a CVE you simply could not analyze.
