@@ -782,21 +782,6 @@ def _clean_contextual_cvss_metrics(raw: dict[str, str] | None) -> dict[str, str]
     return metrics
 
 
-def _clean_contextual_cvss_metric_reasoning(
-    raw: dict[str, str] | None, metrics: dict[str, str]
-) -> dict[str, str]:
-    """Keep per-metric justifications that belong to an adjusted metric."""
-    if not isinstance(raw, dict):
-        return {}
-    detail: dict[str, str] = {}
-    for key, value in raw.items():
-        metric = str(key or "").strip().upper()
-        text = str(value or "").strip()
-        if metric in metrics and text:
-            detail[metric] = text[:_MAX_CONTEXTUAL_REASONING_CHARS]
-    return detail
-
-
 def _build_dependency_metadata(
     *,
     package_name: str,
@@ -810,7 +795,6 @@ def _build_dependency_metadata(
     reachability_evidence: str | None = None,
     contextual_cvss_metrics: dict[str, str] | None = None,
     contextual_cvss_reasoning: str | None = None,
-    contextual_cvss_metric_reasoning: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     metadata: dict[str, Any] = {
         "package_name": package_name.strip(),
@@ -839,11 +823,6 @@ def _build_dependency_metadata(
     if cleaned_metrics and reasoning:
         metadata["contextual_cvss_metrics"] = cleaned_metrics
         metadata["contextual_cvss_reasoning"] = reasoning[:_MAX_CONTEXTUAL_REASONING_CHARS]
-        metric_reasoning = _clean_contextual_cvss_metric_reasoning(
-            contextual_cvss_metric_reasoning, cleaned_metrics
-        )
-        if metric_reasoning:
-            metadata["contextual_cvss_metric_reasoning"] = metric_reasoning
     return metadata
 
 
@@ -917,7 +896,6 @@ async def _do_create_dependency(  # noqa: PLR0912
     reachability_evidence: str | None = None,
     contextual_cvss_metrics: dict[str, str] | None = None,
     contextual_cvss_reasoning: str | None = None,
-    contextual_cvss_metric_reasoning: dict[str, str] | None = None,
     agent_id: str | None = None,
     agent_name: str | None = None,
 ) -> dict[str, Any]:
@@ -1002,7 +980,6 @@ async def _do_create_dependency(  # noqa: PLR0912
         reachability_evidence=reachability_evidence,
         contextual_cvss_metrics=contextual_cvss_metrics,
         contextual_cvss_reasoning=contextual_cvss_reasoning,
-        contextual_cvss_metric_reasoning=contextual_cvss_metric_reasoning,
     )
     evidence = _build_dependency_evidence(
         cve=parsed_cve,
@@ -1116,7 +1093,6 @@ async def create_dependency_report(
     reachability_evidence: str | None = None,
     contextual_cvss_metrics: dict[str, str] | None = None,
     contextual_cvss_reasoning: str | None = None,
-    contextual_cvss_metric_reasoning: dict[str, str] | None = None,
 ) -> str:
     """File a known-CVE dependency (SCA) finding — one report per CVE x package.
 
@@ -1244,12 +1220,6 @@ async def create_dependency_report(
             never a generic statement such as "low risk". The user reads
             this text next to the adjusted score, so an adjustment
             without it is discarded.
-        contextual_cvss_metric_reasoning: Optional per-metric detail, as a
-            mapping of the SAME metric names you set in
-            ``contextual_cvss_metrics`` to one detailed sentence each
-            (for example ``{"MAC": "Reaching the parser needs the
-            --unsafe flag, which deploy/prod.yaml never sets."}``).
-            Entries for metrics you did not adjust are dropped.
     """
     agent_id, agent_name = _caller_identity(ctx)
 
@@ -1276,7 +1246,6 @@ async def create_dependency_report(
         reachability_evidence=reachability_evidence,
         contextual_cvss_metrics=contextual_cvss_metrics,
         contextual_cvss_reasoning=contextual_cvss_reasoning,
-        contextual_cvss_metric_reasoning=contextual_cvss_metric_reasoning,
         agent_id=agent_id,
         agent_name=agent_name,
     )

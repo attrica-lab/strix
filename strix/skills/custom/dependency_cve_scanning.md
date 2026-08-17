@@ -288,10 +288,6 @@ only caller of `yaml.load` is `parse_manifest` in `scripts/import.py:88`, which
 reaches that function, so an attacker must already hold shell access on the job
 host, and the parsed data is build metadata rather than customer records."
 
-`contextual_cvss_metric_reasoning` is optional and takes one detailed sentence
-per metric you adjusted, keyed by the metric name. Use it for the per-metric
-detail that does not fit the summary.
-
 Omit all the contextual fields when the published rating already fits, and when
 the evidence is thin. A contextual score is a claim you must be able to defend,
 and this adjustment never replaces `advisory_cvss`.

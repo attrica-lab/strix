@@ -884,7 +884,6 @@ def test_dep_tool_exposes_contextual_cvss_params() -> None:
     for field in (
         "contextual_cvss_metrics",
         "contextual_cvss_reasoning",
-        "contextual_cvss_metric_reasoning",
     ):
         assert field in dep_props
     assert "source-to-sink" in dep_props["contextual_cvss_metrics"]["description"].lower()
@@ -914,13 +913,12 @@ async def test_dependency_report_keeps_only_valid_contextual_metrics(
         manifest_path="package-lock.json",
         contextual_cvss_metrics={"MAC": "H", "MC": "L", "AV": "N", "MPR": "Z"},
         contextual_cvss_reasoning="Only scripts/import.py reaches the sink.",
-        contextual_cvss_metric_reasoning={"MAC": "Needs a build flag.", "MPR": "dropped"},
     )
     assert result["success"] is True, result
     metadata = report_state.vulnerability_reports[0]["dependency_metadata"]
     assert metadata["contextual_cvss_metrics"] == {"MAC": "H", "MC": "L"}
     assert metadata["contextual_cvss_reasoning"] == "Only scripts/import.py reaches the sink."
-    assert metadata["contextual_cvss_metric_reasoning"] == {"MAC": "Needs a build flag."}
+    assert "contextual_cvss_metric_reasoning" not in metadata
 
 
 @pytest.mark.asyncio
