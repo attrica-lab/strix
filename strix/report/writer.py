@@ -215,6 +215,14 @@ def render_vulnerability_md(report: dict[str, Any]) -> str:  # noqa: PLR0912, PL
     cvss = report.get("cvss")
     if cvss is not None:
         metadata.append(("CVSS", cvss))
+    contextual_metrics = dep_meta.get("contextual_cvss_metrics")
+    if isinstance(contextual_metrics, dict) and contextual_metrics:
+        metadata.append(
+            (
+                "Contextual CVSS Metrics",
+                "/".join(f"{metric}:{value}" for metric, value in contextual_metrics.items()),
+            )
+        )
     if report.get("fix_effort"):
         metadata.append(("Fix Effort", str(report["fix_effort"]).title()))
     for label, value in metadata:
@@ -239,6 +247,11 @@ def render_vulnerability_md(report: dict[str, Any]) -> str:  # noqa: PLR0912, PL
     if report.get("technical_analysis"):
         lines.append("## Technical Analysis\n")
         lines.append(str(report["technical_analysis"]))
+        lines.append("")
+
+    if dep_meta.get("contextual_cvss_reasoning"):
+        lines.append("## Contextual CVSS\n")
+        lines.append(str(dep_meta["contextual_cvss_reasoning"]))
         lines.append("")
 
     if report.get("poc_description") or report.get("poc_script_code"):

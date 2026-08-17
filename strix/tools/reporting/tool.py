@@ -948,7 +948,9 @@ async def _do_create_dependency(  # noqa: PLR0912
             "govulncheck call path). Never claim a reachability level without evidence."
         )
 
-    if contextual_cvss_metrics and not (contextual_cvss_reasoning or "").strip():
+    if _clean_contextual_cvss_metrics(contextual_cvss_metrics) and not (
+        contextual_cvss_reasoning or ""
+    ).strip():
         errors.append(
             "contextual_cvss_reasoning is required when contextual_cvss_metrics is set: "
             "state in one or two sentences what you observed in this codebase that "
