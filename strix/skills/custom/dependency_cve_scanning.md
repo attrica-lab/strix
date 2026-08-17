@@ -161,7 +161,23 @@ fi
    verdict/evidence onto its siblings; run the symbol search against each
    CVE's own affected-symbol list. The import check (step 1) is the only
    part shared across a package's CVEs.
-3. If the analysis was not performed or is inconclusive (obfuscated code,
+3. **Source-to-sink trace — do this whenever step 2 found a symbol hit.** A
+   symbol hit alone says the code calls the vulnerable API; it does not say
+   who can reach it. Start at the sink (the exact line that calls the
+   vulnerable function) and walk backwards hop by hop to the source: the
+   entry point that carries untrusted input (HTTP route, CLI argument, queue
+   or webhook payload, uploaded file, config value). Read each intermediate
+   function; when a hop is a thin wrapper, go one step deeper — never stop at
+   the first caller. Record what each hop enforces: authentication, a role
+   check, validation, a feature flag, a size or type limit, a default that is
+   off in production.
+   Write the chain into `reachability_evidence` as
+   `entry point -> intermediate call -> package call` with a
+   repository-relative `file:line` for every hop, and say who controls the
+   input. If no source reaches the sink, say that too — the level stays
+   `vulnerable_symbol_used` (the call is real), and the trace is what tells
+   the reader it is only reachable from, say, an operator CLI.
+4. If the analysis was not performed or is inconclusive (obfuscated code,
    dynamic loading, unparsable sources) ⇒ `unknown` and say why in
    `assumptions`.
 
@@ -258,24 +274,15 @@ Set only what your usage analysis supports:
 - `CR`/`IR`/`AR` `H`/`M`/`L` — the security requirement of the data or service
   the package handles (credentials or payment data raise `CR`).
 
-Ground every metric in a **source-to-sink trace**, not in a general impression
-of the package. Before you set any metric:
+Ground every metric in the **source-to-sink trace** from the usage analysis
+(step 3 above), not in a general impression of the package. Derive the metrics
+from that chain: `MAV`, `MPR`, and `MUI` come from what the source requires;
+`MAC` comes from the preconditions the hops enforce; `MC`, `MI`, and `MA` come
+from the data and privileges available at the sink; `CR`, `IR`, and `AR` come
+from what that data is worth.
 
-1. Find the sink: the exact line where this codebase calls the vulnerable
-   function or class of the package.
-2. Walk backwards hop by hop to the source: the entry point that carries
-   untrusted input (HTTP route, CLI argument, queue or webhook payload,
-   uploaded file, config value). Read each intermediate function. When a hop
-   is a thin wrapper, go one step deeper — never stop at the first caller.
-3. Record what each hop enforces: authentication, a role check, validation, a
-   feature flag, a size or type limit, a default that is off in production.
-4. Derive the metrics from that chain. `MAV`, `MPR`, and `MUI` come from what
-   the source requires. `MAC` comes from the preconditions on the hops. `MC`,
-   `MI`, and `MA` come from the data and privileges available at the sink.
-   `CR`, `IR`, and `AR` come from what that data is worth.
-
-If the chain breaks — no source reaches the sink, or you cannot follow a hop —
-say so and omit the contextual fields instead of guessing.
+No trace, no contextual metrics: if you did not reach a symbol hit, or you
+could not follow a hop, omit the contextual fields instead of guessing.
 
 `contextual_cvss_reasoning` is required with the metrics. Write two to four
 sentences that another engineer can check without opening the repository. Name

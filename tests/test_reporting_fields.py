@@ -887,6 +887,7 @@ def test_dep_tool_exposes_contextual_cvss_params() -> None:
     ):
         assert field in dep_props
     assert "source-to-sink" in dep_props["contextual_cvss_metrics"]["description"].lower()
+    assert "source-to-sink" in dep_props["reachability_evidence"]["description"].lower()
     assert "file:line" in dep_props["contextual_cvss_reasoning"]["description"].lower()
 
 

@@ -1188,6 +1188,17 @@ async def create_dependency_report(
             (required for any level other than ``unknown``): repo-relative
             ``file:line`` of the import or symbol usage, the matched
             advisory symbols, or the govulncheck call-path excerpt.
+            Whenever you found the vulnerable symbol in use, also give the
+            **source-to-sink trace** here: start at the vulnerable package
+            call site and walk backwards hop by hop to the entry point
+            that carries untrusted input (HTTP route, CLI argument, queue
+            message, webhook, config file), going one step deeper whenever
+            a hop is a wrapper. Write it as ``entry point -> intermediate
+            call -> package call`` with a ``file:line`` per hop, name what
+            each hop enforces (auth, role check, validation, a flag that
+            is off in production), and say who controls the input. State
+            it plainly when no entry point reaches the sink — that is the
+            most useful result a reader can get.
         contextual_cvss_metrics: Optional CVSS v3.1 **environmental**
             metrics that reframe the published score for this codebase,
             as a mapping of metric to value: ``MAV`` (N/A/L/P), ``MAC``
@@ -1196,15 +1207,12 @@ async def create_dependency_report(
             Set only the metrics your evidence supports (for example
             ``{"MAC": "H", "MC": "L"}`` when the vulnerable path needs a
             precondition this deployment enforces and the data at risk is
-            limited). Base the values on a **source-to-sink trace**: start
-            at the entry point that carries untrusted input (HTTP route,
-            CLI argument, queue message, webhook, config file), follow
-            each hop of the data through this codebase, and end at the
-            vulnerable package call site. Go one step deeper whenever a
-            hop is a wrapper — never stop at the first caller. Adjust
-            ``MAV`` / ``MPR`` / ``MUI`` from what that entry point
-            actually requires, and ``MC`` / ``MI`` / ``MA`` from the data
-            and privileges reachable at the sink. You never supply base
+            limited). Derive every value from the **source-to-sink
+            trace** you recorded in ``reachability_evidence``: adjust
+            ``MAV`` / ``MPR`` / ``MUI`` from what the entry point
+            actually requires, ``MAC`` from the preconditions the hops
+            enforce, and ``MC`` / ``MI`` / ``MA`` from the data and
+            privileges reachable at the sink. You never supply base
             metrics or a score: the base vector comes from the advisory
             and the adjusted score is computed from the resulting vector.
             Omit the field when the trace does not change the published
