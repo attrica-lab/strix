@@ -749,37 +749,59 @@ def _validate_manifest_path(manifest_path: str | None) -> str | None:
     return None
 
 
-# CVSS v3.1 environmental metrics an agent may set on a dependency finding,
-# with their legal values. The base metrics are deliberately absent: they come
-# from the published advisory, so a report can never restate them.
-_CVSS_ENVIRONMENTAL_VALUES: dict[str, frozenset[str]] = {
-    "MAV": frozenset("NALP"),
-    "MAC": frozenset("LH"),
-    "MPR": frozenset("NLH"),
-    "MUI": frozenset("NR"),
-    "MS": frozenset("UC"),
-    "MC": frozenset("HLN"),
-    "MI": frozenset("HLN"),
-    "MA": frozenset("HLN"),
-    "CR": frozenset("HML"),
-    "IR": frozenset("HML"),
-    "AR": frozenset("HML"),
-}
 _MAX_CONTEXTUAL_REASONING_CHARS = 2000
 
 
-def _clean_contextual_cvss_metrics(raw: dict[str, str] | None) -> dict[str, str]:
-    """Keep only well-formed CVSS environmental metrics from a report."""
-    if not isinstance(raw, dict):
-        return {}
-    metrics: dict[str, str] = {}
-    for key, value in raw.items():
-        metric = str(key or "").strip().upper()
-        metric_value = str(value or "").strip().upper()
-        allowed = _CVSS_ENVIRONMENTAL_VALUES.get(metric)
-        if allowed and metric_value in allowed:
-            metrics[metric] = metric_value
-    return metrics
+def _validate_contextual_cvss(
+    breakdown: dict[str, str] | None,
+    reasoning: str | None,
+) -> list[str]:
+    errors: list[str] = []
+    if breakdown:
+        for name, valid in _CVSS_VALID.items():
+            value = breakdown.get(name)
+            if value not in valid:
+                errors.append(
+                    f"Invalid contextual_cvss_breakdown {name}: {value}. Must be one of: {valid}"
+                )
+        if not (reasoning or "").strip():
+            errors.append(
+                "contextual_cvss_reasoning is required when contextual_cvss_breakdown is "
+                "set: state what you observed in this codebase that justifies the "
+                "contextual rating. A contextual score with no reasoning is not shown."
+            )
+    return errors
+
+
+def _validate_advisory_cvss(advisory_cvss: float | None) -> str | None:
+    if advisory_cvss is None:
+        return (
+            "advisory_cvss is required: read the published advisory base score "
+            "(0.0-10.0) off the advisory (trivy CVSS / NVD / GHSA). It is the "
+            "published reference the finding is rated against — do not omit it "
+            "or the finding cannot be rated."
+        )
+    if not 0.0 <= advisory_cvss <= 10.0:
+        return f"advisory_cvss must be between 0.0 and 10.0, got {advisory_cvss}"
+    return None
+
+
+def _resolve_dependency_rating(
+    advisory_cvss: float | None,
+    contextual_cvss_breakdown: dict[str, str] | None,
+) -> tuple[float | None, str, float | None, str | None]:
+    """Rate the finding.
+
+    A contextual breakdown works exactly like a normal finding's
+    ``cvss_breakdown``: the agent supplies the 8 metrics as observed in this
+    codebase and the score/vector are computed from them. When provided it
+    rates the finding; the advisory score stays as the published reference.
+    """
+    if contextual_cvss_breakdown:
+        score, severity, vector = _calculate_cvss(contextual_cvss_breakdown)
+        return score, severity, score, vector
+    score, severity = _dependency_severity(advisory_cvss)
+    return score, severity, None, None
 
 
 def _build_dependency_metadata(
@@ -793,13 +815,18 @@ def _build_dependency_metadata(
     manifest_path: str | None = None,
     reachability: str | None = None,
     reachability_evidence: str | None = None,
-    contextual_cvss_metrics: dict[str, str] | None = None,
+    advisory_cvss: float | None = None,
+    contextual_cvss_breakdown: dict[str, str] | None = None,
+    contextual_cvss_score: float | None = None,
+    contextual_cvss_vector: str | None = None,
     contextual_cvss_reasoning: str | None = None,
 ) -> dict[str, Any]:
     metadata: dict[str, Any] = {
         "package_name": package_name.strip(),
         "installed_version": installed_version.strip(),
     }
+    if advisory_cvss is not None:
+        metadata["advisory_cvss"] = advisory_cvss
     if package_ecosystem and package_ecosystem.strip():
         metadata["package_ecosystem"] = package_ecosystem.strip()
     if manifest_path and manifest_path.strip():
@@ -816,12 +843,19 @@ def _build_dependency_metadata(
         metadata["reachability"] = reachability.strip()
         if reachability_evidence and reachability_evidence.strip():
             metadata["reachability_evidence"] = reachability_evidence.strip()
-    # Contextual CVSS is only meaningful as metrics plus the reasoning a reader
-    # can check, so an incomplete pair is dropped.
-    cleaned_metrics = _clean_contextual_cvss_metrics(contextual_cvss_metrics)
+    # Contextual CVSS is only meaningful as the full breakdown, its computed
+    # score/vector, and the reasoning a reader can check — an incomplete set
+    # is dropped.
     reasoning = str(contextual_cvss_reasoning or "").strip()
-    if cleaned_metrics and reasoning:
-        metadata["contextual_cvss_metrics"] = cleaned_metrics
+    if (
+        contextual_cvss_breakdown
+        and contextual_cvss_score is not None
+        and contextual_cvss_vector
+        and reasoning
+    ):
+        metadata["contextual_cvss_breakdown"] = contextual_cvss_breakdown
+        metadata["contextual_cvss_score"] = contextual_cvss_score
+        metadata["contextual_cvss_vector"] = contextual_cvss_vector
         metadata["contextual_cvss_reasoning"] = reasoning[:_MAX_CONTEXTUAL_REASONING_CHARS]
     return metadata
 
@@ -894,7 +928,7 @@ async def _do_create_dependency(  # noqa: PLR0912
     manifest_path: str | None = None,
     reachability: str = "unknown",
     reachability_evidence: str | None = None,
-    contextual_cvss_metrics: dict[str, str] | None = None,
+    contextual_cvss_breakdown: dict[str, str] | None = None,
     contextual_cvss_reasoning: str | None = None,
     agent_id: str | None = None,
     agent_name: str | None = None,
@@ -948,28 +982,21 @@ async def _do_create_dependency(  # noqa: PLR0912
             "govulncheck call path). Never claim a reachability level without evidence."
         )
 
-    if _clean_contextual_cvss_metrics(contextual_cvss_metrics) and not (
-        contextual_cvss_reasoning or ""
-    ).strip():
-        errors.append(
-            "contextual_cvss_reasoning is required when contextual_cvss_metrics is set: "
-            "state in one or two sentences what you observed in this codebase that "
-            "justifies the adjustment. An adjusted score with no reasoning is not shown."
-        )
+    errors.extend(_validate_contextual_cvss(contextual_cvss_breakdown, contextual_cvss_reasoning))
 
-    if advisory_cvss is None:
-        errors.append(
-            "advisory_cvss is required: read the published advisory base score "
-            "(0.0-10.0) off the advisory (trivy CVSS / NVD / GHSA). Severity is "
-            "derived solely from it — do not omit it or the finding cannot be rated."
-        )
-    elif not 0.0 <= advisory_cvss <= 10.0:
-        errors.append(f"advisory_cvss must be between 0.0 and 10.0, got {advisory_cvss}")
+    advisory_err = _validate_advisory_cvss(advisory_cvss)
+    if advisory_err:
+        errors.append(advisory_err)
 
     if errors:
         return {"success": False, "error": "Validation failed", "errors": errors}
 
-    cvss_score, severity = _dependency_severity(advisory_cvss)
+    try:
+        cvss_score, severity, contextual_score, contextual_vector = _resolve_dependency_rating(
+            advisory_cvss, contextual_cvss_breakdown
+        )
+    except ValueError as exc:
+        return {"success": False, "error": "Validation failed", "errors": [str(exc)]}
     dependency_metadata = _build_dependency_metadata(
         package_name=package_name,
         installed_version=installed_version,
@@ -980,7 +1007,10 @@ async def _do_create_dependency(  # noqa: PLR0912
         manifest_path=manifest_path,
         reachability=reachability,
         reachability_evidence=reachability_evidence,
-        contextual_cvss_metrics=contextual_cvss_metrics,
+        advisory_cvss=advisory_cvss,
+        contextual_cvss_breakdown=contextual_cvss_breakdown,
+        contextual_cvss_score=contextual_score,
+        contextual_cvss_vector=contextual_vector,
         contextual_cvss_reasoning=contextual_cvss_reasoning,
     )
     evidence = _build_dependency_evidence(
@@ -1093,7 +1123,7 @@ async def create_dependency_report(
     dependency_path: str | None = None,
     reachability: str = "unknown",
     reachability_evidence: str | None = None,
-    contextual_cvss_metrics: dict[str, str] | None = None,
+    contextual_cvss_breakdown: dict[str, str] | None = None,
     contextual_cvss_reasoning: str | None = None,
 ) -> str:
     """File a known-CVE dependency (SCA) finding — one report per CVE x package.
@@ -1137,8 +1167,10 @@ async def create_dependency_report(
       proved a path from application code to the vulnerable function.
     - ``unknown`` — usage analysis was not performed or was inconclusive.
 
-    Severity is still derived solely from ``advisory_cvss`` — the
-    reachability level never changes the rating, only prioritization.
+    Severity comes from ``contextual_cvss_breakdown`` when you provide one
+    (computed exactly like a normal finding's ``cvss_breakdown``), otherwise
+    from ``advisory_cvss``. The reachability level alone never changes the
+    rating, only prioritization.
 
     **Formatting**: use markdown in text fields (``**bold**``, ``inline
     code`` for package/version identifiers, fenced code blocks for
@@ -1159,8 +1191,9 @@ async def create_dependency_report(
         cwe: ``CWE-NNN`` (most specific) if certain, else omit.
         advisory_cvss: **Required.** Published advisory base score
             (0.0-10.0) — read it off the advisory (trivy CVSS / NVD / GHSA).
-            Severity is derived solely from this score, so it must be the
-            real published value; do not guess or omit it.
+            It is the published reference the finding is rated against and
+            rates the finding whenever you give no contextual breakdown, so
+            it must be the real published value; do not guess or omit it.
         technical_analysis: Optional deeper mechanism/root-cause detail.
         fix_effort: One of ``trivial`` / ``low`` / ``medium`` / ``high``
             (dependency upgrades are usually ``trivial``/``low``).
@@ -1199,26 +1232,29 @@ async def create_dependency_report(
             is off in production), and say who controls the input. State
             it plainly when no entry point reaches the sink — that is the
             most useful result a reader can get.
-        contextual_cvss_metrics: Optional CVSS v3.1 **environmental**
-            metrics that reframe the published score for this codebase,
-            as a mapping of metric to value: ``MAV`` (N/A/L/P), ``MAC``
-            (L/H), ``MPR`` (N/L/H), ``MUI`` (N/R), ``MS`` (U/C), ``MC`` /
-            ``MI`` / ``MA`` (H/L/N), ``CR`` / ``IR`` / ``AR`` (H/M/L).
-            Set only the metrics your evidence supports (for example
-            ``{"MAC": "H", "MC": "L"}`` when the vulnerable path needs a
-            precondition this deployment enforces and the data at risk is
-            limited). Derive every value from the **source-to-sink
-            trace** you recorded in ``reachability_evidence``: adjust
-            ``MAV`` / ``MPR`` / ``MUI`` from what the entry point
-            actually requires, ``MAC`` from the preconditions the hops
-            enforce, and ``MC`` / ``MI`` / ``MA`` from the data and
-            privileges reachable at the sink. You never supply base
-            metrics or a score: the base vector comes from the advisory
-            and the adjusted score is computed from the resulting vector.
-            Omit the field when the trace does not change the published
-            rating, or when you could not complete the trace.
+        contextual_cvss_breakdown: Optional full CVSS v3.1 rating of this
+            CVE **in this codebase** — the same 8-metric object as
+            ``create_vulnerability_report``'s ``cvss_breakdown``:
+            ``attack_vector`` (N/A/L/P), ``attack_complexity`` (L/H),
+            ``privileges_required`` (N/L/H), ``user_interaction`` (N/R),
+            ``scope`` (U/C), ``confidentiality`` / ``integrity`` /
+            ``availability`` (N/L/H). All 8 metrics are required when the
+            field is set, and the contextual score/vector are computed
+            from them — you never supply a score. Start from the
+            advisory's published metrics and change only what the
+            **source-to-sink trace** you recorded in
+            ``reachability_evidence`` proves is different here: derive
+            ``attack_vector`` / ``privileges_required`` /
+            ``user_interaction`` from what the entry point actually
+            requires, ``attack_complexity`` from the preconditions the
+            hops enforce, and the impact metrics from the data and
+            privileges reachable at the sink. When provided, this rating
+            determines the finding's severity; ``advisory_cvss`` stays as
+            the published reference. Omit the field when the trace does
+            not change the published rating, or when you could not
+            complete the trace.
         contextual_cvss_reasoning: **Required whenever**
-            ``contextual_cvss_metrics`` is set. Two to four detailed
+            ``contextual_cvss_breakdown`` is set. Two to four detailed
             sentences that a reviewer can verify without opening the repo:
             how the application uses the package, which call sites or
             configuration you inspected (repo-relative ``file:line``),
@@ -1254,7 +1290,7 @@ async def create_dependency_report(
         manifest_path=manifest_path,
         reachability=reachability,
         reachability_evidence=reachability_evidence,
-        contextual_cvss_metrics=contextual_cvss_metrics,
+        contextual_cvss_breakdown=contextual_cvss_breakdown,
         contextual_cvss_reasoning=contextual_cvss_reasoning,
         agent_id=agent_id,
         agent_name=agent_name,

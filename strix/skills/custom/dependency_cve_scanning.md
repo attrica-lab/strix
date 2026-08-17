@@ -241,63 +241,68 @@ findings and rejects empty PoC fields):
   installed/affected version, fixed version, lockfile path, and the relevant
   trivy output excerpt.
 - **Always set `advisory_cvss` to the published advisory base score (0.0–10.0).**
-  Severity is derived *solely* from this number: read it off the advisory (`CVSS`
-  in trivy output, or the NVD/GHSA page) and pass the real value. The tool rejects
-  a call that omits it, because guessing a score both inflates low CVEs and
-  deflates critical ones.
+  It is the published reference, and it rates the finding whenever you give no
+  contextual breakdown: read it off the advisory (`CVSS` in trivy output, or the
+  NVD/GHSA page) and pass the real value. The tool rejects a call that omits it,
+  because guessing a score both inflates low CVEs and deflates critical ones.
 - Set `cwe` to the most specific `CWE-NNN` when the advisory names one.
 - Do NOT cap severity at LOW just because there is no dynamic reproduction — use
   the advisory score.
 - Set `reachability` + `reachability_evidence` from the usage analysis above;
   use `assumptions` for anything softer (confidence, caveats, analysis limits).
-- Set `contextual_cvss_metrics` + `contextual_cvss_reasoning` when this codebase
-  clearly changes the risk the published score describes (see below).
+- Set `contextual_cvss_breakdown` + `contextual_cvss_reasoning` when this
+  codebase clearly changes the risk the published score describes (see below).
 
-### Contextual (environmental) CVSS
+### Contextual CVSS
 
-The published score rates the CVE in the abstract. `contextual_cvss_metrics`
-rates it **here**, in this codebase, with CVSS v3.1 environmental metrics. The
-advisory's base metrics stay fixed — you never restate them and never pass a
-score, the adjusted score is computed from the resulting vector.
+The published score rates the CVE in the abstract. `contextual_cvss_breakdown`
+rates it **here**, in this codebase — the same 8-metric CVSS v3.1 object as a
+normal finding's `cvss_breakdown` (`attack_vector`, `attack_complexity`,
+`privileges_required`, `user_interaction`, `scope`, `confidentiality`,
+`integrity`, `availability`). You never pass a score: the contextual score and
+vector are computed from the breakdown, and when you provide one it determines
+the finding's severity. `advisory_cvss` stays the published reference.
 
-Set only what your usage analysis supports:
+Start from the advisory's own published metrics and change only what your
+evidence proves is different in this codebase:
 
-- `MAV` `N`/`A`/`L`/`P` — the attack vector as deployed. A library reached only
-  by a local CLI is `L`, not `N`.
-- `MAC` `L`/`H` — raise to `H` when the vulnerable path needs a precondition the
-  code enforces (input validation, a non-default flag, an internal-only route).
-- `MPR` `N`/`L`/`H`, `MUI` `N`/`R` — privileges or interaction this deployment
-  requires before the path is reachable.
-- `MS` `U`/`C` — whether exploitation here escapes the component boundary.
-- `MC`/`MI`/`MA` `H`/`L`/`N` — the impact in this codebase. `not_imported` code
-  the build still ships is usually `N` across all three.
-- `CR`/`IR`/`AR` `H`/`M`/`L` — the security requirement of the data or service
-  the package handles (credentials or payment data raise `CR`).
+- `attack_vector` `N`/`A`/`L`/`P` — as deployed. A library reached only by a
+  local CLI is `L`, not `N`.
+- `attack_complexity` `L`/`H` — raise to `H` when the vulnerable path needs a
+  precondition the code enforces (input validation, a non-default flag, an
+  internal-only route).
+- `privileges_required` `N`/`L`/`H`, `user_interaction` `N`/`R` — what this
+  deployment requires before the path is reachable.
+- `scope` `U`/`C` — whether exploitation here escapes the component boundary.
+- `confidentiality`/`integrity`/`availability` `N`/`L`/`H` — the impact in this
+  codebase. `not_imported` code the build still ships is usually `N` across all
+  three.
 
 Ground every metric in the **source-to-sink trace** from the usage analysis
 (step 3 above), not in a general impression of the package. Derive the metrics
-from that chain: `MAV`, `MPR`, and `MUI` come from what the source requires;
-`MAC` comes from the preconditions the hops enforce; `MC`, `MI`, and `MA` come
-from the data and privileges available at the sink; `CR`, `IR`, and `AR` come
-from what that data is worth.
+from that chain: `attack_vector`, `privileges_required`, and `user_interaction`
+come from what the source requires; `attack_complexity` comes from the
+preconditions the hops enforce; `confidentiality`, `integrity`, and
+`availability` come from the data and privileges available at the sink.
 
-No trace, no contextual metrics: if you did not reach a symbol hit, or you
+No trace, no contextual breakdown: if you did not reach a symbol hit, or you
 could not follow a hop, omit the contextual fields instead of guessing.
 
-`contextual_cvss_reasoning` is required with the metrics. Write two to four
+`contextual_cvss_reasoning` is required with the breakdown. Write two to four
 sentences that another engineer can check without opening the repository. Name
 the chain hop by hop as `entry point -> intermediate call -> package call`, with
 a repository-relative `file:line` for each hop, say who controls the input, and
-say what the adjustment changes. Example: `{"MAC": "H", "MC": "L"}` with "The
-only caller of `yaml.load` is `parse_manifest` in `scripts/import.py:88`, which
-`cli/commands.py:212` invokes for an operator-supplied path behind the
-`--allow-unsafe-import` flag that `deploy/prod.yaml` never sets. No HTTP route
-reaches that function, so an attacker must already hold shell access on the job
-host, and the parsed data is build metadata rather than customer records."
+say what the contextual rating changes. Example: lowering `attack_vector` to
+`L` and `confidentiality` to `L` with "The only caller of `yaml.load` is
+`parse_manifest` in `scripts/import.py:88`, which `cli/commands.py:212` invokes
+for an operator-supplied path behind the `--allow-unsafe-import` flag that
+`deploy/prod.yaml` never sets. No HTTP route reaches that function, so an
+attacker must already hold shell access on the job host, and the parsed data is
+build metadata rather than customer records."
 
 Omit all the contextual fields when the published rating already fits, and when
-the evidence is thin. A contextual score is a claim you must be able to defend,
-and this adjustment never replaces `advisory_cvss`.
+the evidence is thin. A contextual rating is a claim you must be able to
+defend, and it never replaces `advisory_cvss` as the published reference.
 
 Verify the CVE with `web_search` when available before reporting. Never guess or
 hallucinate a CVE id.
@@ -308,12 +313,12 @@ hallucinate a CVE id.
   `create_dependency_report`.
 - Do not report a finding without a verified CVE id.
 - Do not batch multiple CVEs into one report.
-- Do not omit `advisory_cvss` — the tool rejects it, and it is the single input
-  that determines dependency severity.
+- Do not omit `advisory_cvss` — the tool rejects it, and it rates every finding
+  that carries no contextual breakdown.
 - Do not silently drop a known CVE because it lacks a dynamic PoC — that is the
   exact failure this skill prevents.
 - Do not downgrade advisory severity for lack of dynamic reproduction.
 - Do not claim a `reachability` level the evidence does not prove — `unknown`
   with a reason is always acceptable; an overclaimed level never is.
-- Do not send `contextual_cvss_metrics` without evidence-backed reasoning, and
+- Do not send `contextual_cvss_breakdown` without evidence-backed reasoning, and
   do not use it to quietly de-rate a CVE you simply could not analyze.

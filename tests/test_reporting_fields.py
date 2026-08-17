@@ -160,6 +160,7 @@ async def test_dependency_report_sets_class_and_metadata(report_state: ReportSta
     assert report["dependency_metadata"] == {
         "package_name": "lodash",
         "installed_version": "4.17.20",
+        "advisory_cvss": 7.2,
         "package_ecosystem": "npm",
         "manifest_path": "package-lock.json",
         "fixed_version": "4.17.21",
@@ -463,6 +464,7 @@ async def test_dependency_report_dedupe_candidate_includes_dependency_metadata(
         "dependency_metadata": {
             "package_name": "sample",
             "installed_version": "1.0.0",
+            "advisory_cvss": 0.0,
             "package_ecosystem": "npm",
             "manifest_path": "package-lock.json",
             "fixed_version": "1.0.1",
@@ -882,17 +884,29 @@ def test_vuln_tool_exposes_new_params() -> None:
 def test_dep_tool_exposes_contextual_cvss_params() -> None:
     dep_props = create_dependency_report.params_json_schema["properties"]
     for field in (
-        "contextual_cvss_metrics",
+        "contextual_cvss_breakdown",
         "contextual_cvss_reasoning",
     ):
         assert field in dep_props
-    assert "source-to-sink" in dep_props["contextual_cvss_metrics"]["description"].lower()
+    assert "source-to-sink" in dep_props["contextual_cvss_breakdown"]["description"].lower()
     assert "source-to-sink" in dep_props["reachability_evidence"]["description"].lower()
     assert "file:line" in dep_props["contextual_cvss_reasoning"]["description"].lower()
 
 
+_CONTEXTUAL_BREAKDOWN = {
+    "attack_vector": "L",
+    "attack_complexity": "H",
+    "privileges_required": "H",
+    "user_interaction": "N",
+    "scope": "U",
+    "confidentiality": "L",
+    "integrity": "L",
+    "availability": "N",
+}
+
+
 @pytest.mark.asyncio
-async def test_dependency_report_keeps_only_valid_contextual_metrics(
+async def test_dependency_report_computes_contextual_cvss(
     report_state: ReportState,
 ) -> None:
     result = await _do_create_dependency(
@@ -912,18 +926,25 @@ async def test_dependency_report_keeps_only_valid_contextual_metrics(
         cwe="CWE-94",
         fix_effort="trivial",
         manifest_path="package-lock.json",
-        contextual_cvss_metrics={"MAC": "H", "MC": "L", "AV": "N", "MPR": "Z"},
+        contextual_cvss_breakdown=_CONTEXTUAL_BREAKDOWN,
         contextual_cvss_reasoning="Only scripts/import.py reaches the sink.",
     )
     assert result["success"] is True, result
-    metadata = report_state.vulnerability_reports[0]["dependency_metadata"]
-    assert metadata["contextual_cvss_metrics"] == {"MAC": "H", "MC": "L"}
+    report = report_state.vulnerability_reports[0]
+    metadata = report["dependency_metadata"]
+    assert metadata["advisory_cvss"] == 7.2
+    assert metadata["contextual_cvss_breakdown"] == _CONTEXTUAL_BREAKDOWN
+    assert metadata["contextual_cvss_vector"] == ("CVSS:3.1/AV:L/AC:H/PR:H/UI:N/S:U/C:L/I:L/A:N")
+    assert metadata["contextual_cvss_score"] == pytest.approx(3.0, abs=0.05)
     assert metadata["contextual_cvss_reasoning"] == "Only scripts/import.py reaches the sink."
-    assert "contextual_cvss_metric_reasoning" not in metadata
+    # The contextual rating determines the finding's score/severity, exactly
+    # like a normal finding's cvss_breakdown.
+    assert report["cvss"] == metadata["contextual_cvss_score"]
+    assert report["severity"] == "low"
 
 
 @pytest.mark.asyncio
-async def test_dependency_report_rejects_contextual_metrics_without_reasoning(
+async def test_dependency_report_rates_from_advisory_without_contextual(
     report_state: ReportState,
 ) -> None:
     result = await _do_create_dependency(
@@ -943,7 +964,69 @@ async def test_dependency_report_rejects_contextual_metrics_without_reasoning(
         cwe="CWE-94",
         fix_effort="trivial",
         manifest_path="package-lock.json",
-        contextual_cvss_metrics={"MAC": "H"},
+    )
+    assert result["success"] is True, result
+    report = report_state.vulnerability_reports[0]
+    assert report["cvss"] == 7.2
+    assert report["severity"] == "high"
+    metadata = report["dependency_metadata"]
+    assert metadata["advisory_cvss"] == 7.2
+    assert "contextual_cvss_breakdown" not in metadata
+    assert "contextual_cvss_score" not in metadata
+
+
+@pytest.mark.asyncio
+async def test_dependency_report_rejects_incomplete_contextual_breakdown(
+    report_state: ReportState,
+) -> None:
+    result = await _do_create_dependency(
+        title="CVE-2021-23337 in lodash 4.17.20",
+        description="Command injection via template.",
+        target="repo/package.json",
+        cve="CVE-2021-23337",
+        package_name="lodash",
+        installed_version="4.17.20",
+        impact="Arbitrary command execution.",
+        remediation_steps="Upgrade to 4.17.21.",
+        assumptions="Assumes the template sink is reachable.",
+        package_ecosystem="npm",
+        advisory_cvss=7.2,
+        technical_analysis=None,
+        fixed_version="4.17.21",
+        cwe="CWE-94",
+        fix_effort="trivial",
+        manifest_path="package-lock.json",
+        contextual_cvss_breakdown={"attack_vector": "L", "attack_complexity": "Z"},
+        contextual_cvss_reasoning="Only scripts/import.py reaches the sink.",
+    )
+    assert result["success"] is False
+    assert any("attack_complexity" in error for error in result["errors"])
+    assert any("privileges_required" in error for error in result["errors"])
+    assert report_state.vulnerability_reports == []
+
+
+@pytest.mark.asyncio
+async def test_dependency_report_rejects_contextual_breakdown_without_reasoning(
+    report_state: ReportState,
+) -> None:
+    result = await _do_create_dependency(
+        title="CVE-2021-23337 in lodash 4.17.20",
+        description="Command injection via template.",
+        target="repo/package.json",
+        cve="CVE-2021-23337",
+        package_name="lodash",
+        installed_version="4.17.20",
+        impact="Arbitrary command execution.",
+        remediation_steps="Upgrade to 4.17.21.",
+        assumptions="Assumes the template sink is reachable.",
+        package_ecosystem="npm",
+        advisory_cvss=7.2,
+        technical_analysis=None,
+        fixed_version="4.17.21",
+        cwe="CWE-94",
+        fix_effort="trivial",
+        manifest_path="package-lock.json",
+        contextual_cvss_breakdown=_CONTEXTUAL_BREAKDOWN,
         contextual_cvss_reasoning="   ",
     )
     assert result["success"] is False
