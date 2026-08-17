@@ -133,6 +133,27 @@ def format_vulnerability_report(report: dict[str, Any]) -> Text:  # noqa: PLR091
             text.append("CVSS Vector: ", style=field_style)
             text.append("/".join(cvss_parts), style="dim")
 
+    dependency_metadata = report.get("dependency_metadata") or {}
+    if dependency_metadata:
+        contextual_vector = dependency_metadata.get("contextual_cvss_vector")
+        if contextual_vector:
+            text.append("\n\n")
+            text.append("Contextual CVSS Vector: ", style=field_style)
+            text.append(contextual_vector, style="dim")
+
+        advisory_cvss = dependency_metadata.get("advisory_cvss")
+        if advisory_cvss is not None and advisory_cvss != report.get("cvss"):
+            text.append("\n\n")
+            text.append("Advisory CVSS: ", style=field_style)
+            text.append(f"{float(advisory_cvss):.1f}", style="dim")
+
+        contextual_reasoning = dependency_metadata.get("contextual_cvss_reasoning")
+        if contextual_reasoning:
+            text.append("\n\n")
+            text.append("Contextual CVSS Reasoning", style=field_style)
+            text.append("\n")
+            text.append(contextual_reasoning)
+
     description = report.get("description")
     if description:
         text.append("\n\n")
