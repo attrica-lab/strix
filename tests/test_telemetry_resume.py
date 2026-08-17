@@ -40,6 +40,8 @@ def test_scan_ended_reports_resumed_usage_delta(
         model="unknown",
     )
     initial.record_observed_llm_cost(1.25)
+    initial.end_time = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    initial.run_record["end_time"] = initial.end_time
     initial.save_run_data()
 
     resumed = ReportState(run_name="resumed")
@@ -50,7 +52,6 @@ def test_scan_ended_reports_resumed_usage_delta(
         model="unknown",
     )
     resumed.record_observed_llm_cost(0.75)
-    resumed.end_time = (datetime.now(UTC) + timedelta(seconds=2)).isoformat()
 
     sent: list[dict[str, Any]] = []
     monkeypatch.setattr(telemetry, "_send", lambda _event, props: _capture(sent, props))
@@ -61,7 +62,7 @@ def test_scan_ended_reports_resumed_usage_delta(
     assert sent[0]["llm_output_tokens"] == 50
     assert sent[0]["llm_tokens"] == 350
     assert sent[0]["llm_cost"] == pytest.approx(0.75)
-    assert sent[0]["duration_seconds"] <= 2
+    assert 0 <= sent[0]["duration_seconds"] <= 2
 
 
 @pytest.mark.parametrize("telemetry", [posthog, scarf])

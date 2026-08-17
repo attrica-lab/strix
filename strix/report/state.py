@@ -351,6 +351,15 @@ class ReportState:
             for key in ("requests", "input_tokens", "output_tokens", "total_tokens", "cost")
         }
 
+    def get_process_duration_seconds(self) -> float:
+        """Return this process's elapsed wall time for telemetry."""
+        try:
+            start = datetime.fromisoformat(self.process_start_time.replace("Z", "+00:00"))
+            duration = (datetime.now(start.tzinfo) - start).total_seconds()
+            return max(0.0, duration)
+        except (ValueError, TypeError, AttributeError):
+            return 0.0
+
     def get_total_llm_cost(self) -> float:
         """Live accumulated LLM cost, independent of the persisted run-record snapshot."""
         return self._llm_usage.total_cost
