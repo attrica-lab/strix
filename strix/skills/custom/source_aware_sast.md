@@ -145,6 +145,8 @@ step to mine those bundles for endpoint candidates.
 
 ## Converting Static Signals Into Exploits
 
+When source contains model-provider SDKs, prompt templates, retrieval/vector stores, tool/function calling, model loading, training/feedback pipelines, or token/agent-loop accounting, load `llm_applications`. Use its OWASP 2026 LLM01-LLM10 map to trace data provenance, model output, retrieval authorization, tool authority, and resource multipliers rather than treating the provider call as the sink.
+
 1. Rank candidates by impact and exploitability.
 2. Trace source-to-sink flow for top candidates.
 3. Build dynamic PoCs that reproduce the suspected issue.
