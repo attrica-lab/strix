@@ -180,7 +180,6 @@ Prefer aggregate metadata or a unique tester-controlled canary. Do not deliberat
 ## Relationship to Other Skills
 
 - Load `subdomain_takeover` for dangling DNS records or custom-domain provider bindings. Ordinary expiration/re-registration of a registrable domain, MX identity, or embedded software endpoint remains in this skill.
-- Load `appliance_firmware` for embedded endpoints, updater scripts, and installed-version prevalence.
 - Load `source_aware_sast` for targeted source/dataflow confirmation; string presence does not prove current ownership or live consumption.
 - Load `agentic_system_security` only when the endpoint supplies or controls AI skills, plugins, MCP/model adapters, tool definitions, or effective agent authority.
 - Load `semantic_confusion` only when a security decision and privileged consumer use different endpoint/package/alias representations or resolution results. Pure temporal ownership drift does not require it.

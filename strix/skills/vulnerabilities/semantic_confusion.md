@@ -15,7 +15,7 @@ Typical chains cross a validator, router, proxy, framework, parser, filesystem, 
 - Perform malformed framing, delayed-body, oversized-input, crash, or resource-exhaustion cases only in a restartable isolated lab with health monitoring.
 - Use synthetic canaries, reversible actions, non-secret protected resources, or a constant per-test callback identifier. Never place target-derived secrets in an OAST label/body.
 - Change one representation axis at a time so the security-relevant disagreement remains attributable to a specific boundary.
-- Pair `protocol_reverse_engineering` when framing or authentication depends on prior binary/stateful protocol messages. Pair `browser_security` when the final consumer is a browser context, worker, cache, or navigation state machine.
+- Pair `browser_security` when the final consumer is a browser context, worker, cache, or navigation state machine.
 - Do not load this skill for pure ownership drift where every component resolves and interprets the name consistently; use `infrastructure_lifecycle` unless a representation, alias, identity, or resolution-result mismatch is present.
 
 ## Core Model
