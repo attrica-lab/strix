@@ -295,7 +295,10 @@ async def _do_create(  # noqa: PLR0912
                 "success": False,
                 "error": (
                     f"Potential duplicate of '{duplicate_title}' "
-                    f"(id={duplicate_id[:8]}...) — do not re-report the same vulnerability"
+                    f"(id={duplicate_id[:8]}...) — do not re-report the same vulnerability. "
+                    f"If new validated evidence shows greater or lower impact than filed, "
+                    f"amend this finding with update_vulnerability_report using id "
+                    f"'{duplicate_id}' instead."
                 ),
                 "duplicate_of": duplicate_id,
                 "duplicate_title": duplicate_title,
@@ -366,30 +369,8 @@ async def _do_update(  # noqa: PLR0911, PLR0912, PLR0915
     method: str | None = None,
     cwe: str | None = None,
     code_locations: list[dict[str, Any]] | None = None,
-    target: str | None = None,
-    cve: str | None = None,
-    dependency_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Validate and amend one known dynamic vulnerability report."""
-    immutable_attempts = {
-        name: value
-        for name, value in {
-            "target": target,
-            "cve": cve,
-            "dependency_metadata": dependency_metadata,
-        }.items()
-        if value is not None
-    }
-    if immutable_attempts:
-        fields = ", ".join(immutable_attempts)
-        return {
-            "success": False,
-            "error": (
-                f"Cannot amend {fields}. File a new report instead because "
-                "the target and dependency metadata identify the finding."
-            ),
-        }
-
     if not report_id.strip():
         return {"success": False, "error": "report_id cannot be empty"}
     if not update_reason.strip():
@@ -493,13 +474,15 @@ async def _do_update(  # noqa: PLR0911, PLR0912, PLR0915
                 updates["cwe"] = parsed_cwe
 
         if "code_locations" in raw_updates:
-            if not isinstance(code_locations, list):
-                errors.append("code_locations must be a list")
+            if not isinstance(code_locations, list) or not code_locations:
+                errors.append("code_locations must contain at least one location")
             else:
                 parsed_locations = _normalize_code_locations(code_locations)
-                if parsed_locations:
+                if not parsed_locations:
+                    errors.append("code_locations must contain at least one valid location")
+                else:
                     errors.extend(_validate_code_locations(parsed_locations))
-                updates["code_locations"] = parsed_locations or []
+                    updates["code_locations"] = parsed_locations
 
         if errors:
             return {"success": False, "error": "Validation failed", "errors": errors}
@@ -622,8 +605,10 @@ async def create_vulnerability_report(
 
     Automatic LLM-based **deduplication** rejects reports that describe
     the same root cause on the same asset as an existing report. If you
-    get a ``duplicate_of`` response, do NOT retry — move on to other
-    areas.
+    get a ``duplicate_of`` response, do not re-submit the same vulnerability.
+    If new validated evidence shows greater or lower impact for that finding,
+    amend it with ``update_vulnerability_report`` using the returned id.
+    Otherwise, move on to other areas.
 
     **Report output rules** (this content may be rendered into generated
     reports):
@@ -935,9 +920,6 @@ async def update_vulnerability_report(
     method: str | None = None,
     cwe: str | None = None,
     code_locations: list[dict[str, Any]] | None = None,
-    target: str | None = None,
-    cve: str | None = None,
-    dependency_metadata: dict[str, Any] | None = None,
 ) -> str:
     """Amend a known vulnerability report when new evidence changes its impact.
 
@@ -977,9 +959,6 @@ async def update_vulnerability_report(
         method=method,
         cwe=cwe,
         code_locations=code_locations,
-        target=target,
-        cve=cve,
-        dependency_metadata=dependency_metadata,
     )
     return json.dumps(result, ensure_ascii=False, default=str)
 

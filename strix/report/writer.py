@@ -113,20 +113,12 @@ def write_run_record(run_dir: Path, run_record: dict[str, Any]) -> None:
     )
 
 
-def write_executive_report(
-    run_dir: Path,
-    final_scan_result: str,
-    vulnerability_reports: list[dict[str, Any]] | None = None,
-) -> None:
+def write_executive_report(run_dir: Path, final_scan_result: str) -> None:
     path = run_dir / "penetration_test_report.md"
     with path.open("w", encoding="utf-8") as f:
         f.write("# Security Penetration Test Report\n\n")
         f.write(f"**Generated:** {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n")
         f.write(f"{final_scan_result}\n")
-        if vulnerability_reports:
-            f.write("\n## Vulnerability Findings\n\n")
-            for report in vulnerability_reports:
-                f.write(f"{render_vulnerability_md(report)}\n")
     logger.info("Saved final penetration test report to: %s", path)
 
 

@@ -502,11 +502,7 @@ class ReportState:
             run_dir.mkdir(parents=True, exist_ok=True)
 
             if self.final_scan_result:
-                write_executive_report(
-                    run_dir,
-                    self.final_scan_result,
-                    self.vulnerability_reports,
-                )
+                write_executive_report(run_dir, self.final_scan_result)
 
             if self.vulnerability_reports:
                 write_vulnerabilities(run_dir, self.vulnerability_reports, self._saved_vuln_ids)
