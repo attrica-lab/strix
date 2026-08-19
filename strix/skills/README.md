@@ -42,7 +42,10 @@ Notable source-aware skills:
 - `source_aware_whitebox` (coordination): white-box orchestration playbook
 - `source_aware_sast` (custom): semgrep/AST/secrets/supply-chain static triage workflow
 - `dependency_cve_scanning` (custom): trivy-based SCA workflow for reporting known dependency CVEs via `create_dependency_report`
+- `npx_confusion` (custom): npx/npm exec/bunx fallback and adjacent package-runner identity confusion, with runner-specific registry and reporting gates
+- `agentic_system_security` (vulnerabilities): effective-authority and MCP/tool ecosystem security testing
 - `azure` (cloud): Azure and Microsoft Entra privilege, PIM, workload identity, and cross-plane escalation analysis
+- `infrastructure_lifecycle` (reconnaissance): abandoned or mutable external dependencies such as update endpoints, MX, storage, and control domains
 - `argument_injection` (vulnerabilities): shell-free CLI option smuggling, secondary argument-file parsing, and platform-specific argv transformation boundaries
 
 Notable LLM security skills:

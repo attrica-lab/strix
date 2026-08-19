@@ -9,6 +9,8 @@ Prompt injection occurs when attacker-influenced content changes model behavior 
 
 Load `llm_applications` for the full OWASP 2026 LLM01-LLM10 architecture and coverage workflow. Treat every LLM feature as a potential confused deputy: models cannot reliably distinguish instructions from data, but impact depends on the application's data, tools, decisions, and output sinks.
 
+When the system can invoke MCP servers, plugins, skills, delegated agents, or consequential tools, also load `agentic_system_security` to model effective authority, target-side authorization, executable component supply chain, and repeatable safety regression. This skill remains focused on instruction/data confusion and unsafe model output.
+
 ## Attack Surface
 
 **Direct Injection**

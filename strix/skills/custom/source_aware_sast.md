@@ -105,6 +105,27 @@ tree-sitter parse -q <file>
 
 Use outputs to improve route/symbol/sink maps for subsequent targeted scans.
 
+## Resolution and Namespace Risks
+
+In repositories with developer tooling, plugins, templates, or package runners, inspect lookup order rather than only dependency versions:
+
+- command runners that fall back from local binaries or `PATH` to a public registry
+- scoped/private package names exposing unscoped binary or alias names
+- plugin, template, module, and autoload search paths writable by a lower-privileged actor
+- CI/composite actions and devcontainer/bootstrap scripts that transitively execute package commands
+- missing local artifacts that silently activate a remote or broader fallback
+
+Record candidate names and verify ownership/existence without claiming or publishing them. A namespace gap is reportable only when the target actually resolves or executes the attacker-contestable name under realistic conditions.
+
+For npm/JavaScript, distinguish the package name from the executable name and
+model the actual working directory, dependency tree, global bin directory,
+cache, and registry configuration. `load_skill(["npx_confusion"])` when a bare
+`npx`/`npm exec` command may fall back from a missing executable to a public
+package. Trivy cannot detect this class because no installed package version
+needs to be vulnerable.
+
+Load `infrastructure_lifecycle` when source, images, firmware, or history contain abandoned domains, provider resources, package namespaces, update URLs, mail identities, telemetry, or control endpoints. Use targeted string/dataflow analysis when this is the research question; the full baseline scanner bundle is not required merely to trace one endpoint consumer.
+
 ## Secret and Supply Chain Coverage
 
 Detect hardcoded credentials:
