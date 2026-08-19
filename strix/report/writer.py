@@ -113,12 +113,20 @@ def write_run_record(run_dir: Path, run_record: dict[str, Any]) -> None:
     )
 
 
-def write_executive_report(run_dir: Path, final_scan_result: str) -> None:
+def write_executive_report(
+    run_dir: Path,
+    final_scan_result: str,
+    vulnerability_reports: list[dict[str, Any]] | None = None,
+) -> None:
     path = run_dir / "penetration_test_report.md"
     with path.open("w", encoding="utf-8") as f:
         f.write("# Security Penetration Test Report\n\n")
         f.write(f"**Generated:** {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n")
         f.write(f"{final_scan_result}\n")
+        if vulnerability_reports:
+            f.write("\n## Vulnerability Findings\n\n")
+            for report in vulnerability_reports:
+                f.write(f"{render_vulnerability_md(report)}\n")
     logger.info("Saved final penetration test report to: %s", path)
 
 
@@ -197,6 +205,8 @@ def render_vulnerability_md(report: dict[str, Any]) -> str:  # noqa: PLR0912, PL
         f"**Severity:** {report.get('severity', 'unknown').upper()}",
         f"**Found:** {report.get('timestamp', 'unknown')}",
     ]
+    if report.get("updated_at"):
+        lines.append(f"**Updated:** {report['updated_at']}")
 
     dep_meta = report.get("dependency_metadata") or {}
     metadata: list[tuple[str, Any]] = [
@@ -302,6 +312,25 @@ def render_vulnerability_md(report: dict[str, Any]) -> str:  # noqa: PLR0912, PL
     if report.get("assumptions"):
         lines.append("## Assumptions\n")
         lines.append(str(report["assumptions"]))
+        lines.append("")
+
+    update_history = report.get("update_history")
+    if isinstance(update_history, list) and update_history:
+        lines.append("## Amendment History\n")
+        for entry in update_history:
+            if not isinstance(entry, dict):
+                continue
+            timestamp = entry.get("timestamp", "unknown")
+            reason = entry.get("update_reason", "")
+            fields = ", ".join(str(field) for field in entry.get("fields_changed", []))
+            lines.append(f"- **{timestamp}:** {reason}")
+            lines.append(f"  Changed fields: {fields or 'none'}")
+            if "previous_severity" in entry or "previous_cvss_score" in entry:
+                lines.append(
+                    "  Previous rating: "
+                    f"{str(entry.get('previous_severity', 'unknown')).upper()} "
+                    f"(CVSS {entry.get('previous_cvss_score', 'unknown')})"
+                )
         lines.append("")
 
     return "\n".join(lines)
