@@ -43,6 +43,7 @@ Notable source-aware skills:
 - `source_aware_sast` (custom): semgrep/AST/secrets/supply-chain static triage workflow
 - `dependency_cve_scanning` (custom): trivy-based SCA workflow for reporting known dependency CVEs via `create_dependency_report`
 - `azure` (cloud): Azure and Microsoft Entra privilege, PIM, workload identity, and cross-plane escalation analysis
+- `argument_injection` (vulnerabilities): shell-free CLI option smuggling, secondary argument-file parsing, and platform-specific argv transformation boundaries
 
 Notable LLM security skills:
 - `llm_applications` (technologies): end-to-end OWASP 2026 LLM01-LLM10 coverage across models, RAG, vectors, agents, tools, outputs, supply chain, and resource controls
