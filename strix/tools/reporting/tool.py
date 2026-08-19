@@ -441,7 +441,16 @@ async def _do_update(  # noqa: PLR0911, PLR0912, PLR0915
                 "endpoint",
                 "method",
             }:
-                updates[field] = str(value).strip()
+                normalized_value = str(value).strip()
+                if not normalized_value:
+                    errors.append(
+                        _REQUIRED_FIELDS.get(
+                            field,
+                            f"{field.replace('_', ' ').capitalize()} cannot be empty",
+                        ),
+                    )
+                else:
+                    updates[field] = normalized_value
 
         if "fix_effort" in raw_updates:
             normalized_fix_effort = str(fix_effort).strip().lower()
