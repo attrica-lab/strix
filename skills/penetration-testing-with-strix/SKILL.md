@@ -75,6 +75,9 @@ strix -n -t ./openapi.yaml -t https://api.staging.example.com
 
 # Many targets from a file, one per line
 strix -n --target-list ./targets.txt --max-budget 30
+
+# Give the agents a file to work with (wordlist, spec, notes) without making it a target
+strix -n -t https://staging.example.com --workspace-file ./wordlist.txt --max-budget 20
 ```
 
 A local path passed with `-t` is mounted into the sandbox **writable** — the agents can read and modify it, so point at a clean checkout, not uncommitted work you care about.
@@ -88,6 +91,7 @@ Key flags:
 | `-n, --non-interactive` | Headless, exits on completion. Required for agents. |
 | `-m, --scan-mode` | `quick` (minutes) / `standard` (~30 min) / `deep` (hours, default). |
 | `--instruction` / `--instruction-file` | Credentials, focus areas, scope rules. |
+| `--workspace-file PATH[:DEST]` | Place a file from this machine into `/workspace` read-only before the scan, for a wordlist, a spec, or notes. Repeatable. |
 | `--max-budget USD` | Hard LLM spend cap; scan wraps up cleanly at the limit. |
 | `--max-turns N` | Per-agent turn cap (default 500). |
 | `--resume RUN_NAME` | Resume a prior run from `strix_runs/`, with its agent history and targets. Cannot be combined with `-t`. |
