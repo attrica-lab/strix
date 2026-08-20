@@ -245,6 +245,32 @@ def test_persist_current_env_wins_over_persisted_value(
     assert json.loads(target.read_text(encoding="utf-8"))["env"]["STRIX_LLM"] == "env-model"
 
 
+def test_persist_current_preserves_dict_valued_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("STRIX_LLM", raising=False)
+    monkeypatch.delenv("LLM_EXTRA_HEADERS", raising=False)
+    target = tmp_path / "cli-config.json"
+    target.write_text(
+        json.dumps(
+            {
+                "env": {
+                    "STRIX_LLM": "file-model",
+                    "LLM_EXTRA_HEADERS": {"X-Foo": "bar"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    loader.apply_config_override(target)
+
+    loader.persist_current()
+
+    persisted_env = json.loads(target.read_text(encoding="utf-8"))["env"]
+    assert persisted_env["STRIX_LLM"] == "file-model"
+    assert persisted_env["LLM_EXTRA_HEADERS"] == {"X-Foo": "bar"}
+
+
 def test_persist_current_sets_0600_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("STRIX_LLM", "persisted-model")
     target = tmp_path / "cli-config.json"

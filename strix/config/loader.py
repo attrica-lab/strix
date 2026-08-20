@@ -63,7 +63,7 @@ def persist_current() -> None:
     target = _override or _DEFAULT_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
 
-    env_block: dict[str, str] = _read_persisted_env(target)
+    env_block: dict[str, Any] = _read_persisted_env(target)
     for sub_name in s.model_fields:
         sub_model = getattr(s, sub_name)
         if not isinstance(sub_model, BaseModel):
@@ -78,7 +78,7 @@ def persist_current() -> None:
     write_secret_text(target, json.dumps({"env": env_block}, indent=2))
 
 
-def _read_persisted_env(path: Path) -> dict[str, str]:
+def _read_persisted_env(path: Path) -> dict[str, Any]:
     """Read the ``{"env": {...}}`` block already stored at ``path``."""
     if not path.exists():
         return {}
@@ -90,9 +90,9 @@ def _read_persisted_env(path: Path) -> dict[str, str]:
     if not isinstance(env_block, dict):
         return {}
     return {
-        str(key).upper(): str(value)
+        str(key).upper(): value
         for key, value in env_block.items()
-        if isinstance(value, str | int | float) and str(value)
+        if value is not None and value != ""
     }
 
 
