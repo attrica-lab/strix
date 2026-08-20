@@ -121,11 +121,13 @@ def _build_tool(
 ) -> FunctionTool:
     """Build one namespaced FunctionTool from a listed MCP tool.
 
-    Without ``result_transform`` this is exactly the SDK's stock conversion. With
-    one, the SDK still builds the tool (so name override, input schema, approval
-    policy, error-as-result handling, and tool-origin metadata are unchanged), but
-    we route the underlying MCP call through :func:`_install_result_transform` so
-    the transform sees the structured result and decides the tool's output.
+    The SDK builds the tool (so name override, input schema, approval policy,
+    error-as-result handling, and tool-origin metadata are unchanged). With a
+    ``result_transform`` we route the underlying MCP call through
+    :func:`_install_result_transform` so the transform sees the structured result
+    and decides the tool's output. Without one (the stock path), we still route
+    the call, through :func:`_install_error_status_capture`, so an errored result
+    reads as failed in the TUI while the agent's content is unchanged.
     """
     namespaced_name = f"{config.name}.{mcp_tool.name}"
     tool = MCPUtil.to_function_tool(
@@ -136,6 +138,8 @@ def _build_tool(
     )
     if result_transform is not None:
         _install_result_transform(tool, server, mcp_tool.name, namespaced_name, result_transform)
+    else:
+        _install_error_status_capture(tool, server, mcp_tool.name, namespaced_name)
     return tool
 
 
@@ -177,16 +181,94 @@ def _install_result_transform(
         structured_result = result.model_dump(mode="json")
         return result_transform(namespaced_name, structured_result)
 
-    # ``tool.on_invoke_tool`` is the SDK's failure-handling invoker; it is a plain
-    # object with the inner coroutine on ``_invoke_tool_impl``, not a function, so
-    # treat it as untyped to swap that attribute.
+    _replace_tool_invoke(tool, _invoke)
+
+
+def _replace_tool_invoke(tool: FunctionTool, invoke: Callable[[Any, str], Any]) -> None:
+    """Swap a FunctionTool's inner invoke, failing loudly if the SDK shape changed.
+
+    ``to_function_tool`` wraps the real invoke in the SDK's failure-handling
+    invoker, which stores the inner coroutine on ``_invoke_tool_impl`` and calls
+    it inside its own try/except. Swapping that inner impl keeps the SDK's
+    error-as-result handling and every piece of tool metadata intact. It is a
+    plain object with the coroutine as an attribute, not a function, so we treat
+    it as untyped to swap it. If the SDK ever renames that attribute we raise
+    rather than silently leave the swap un-applied.
+    """
     invoker = cast("Any", tool.on_invoke_tool)
     if not hasattr(invoker, "_invoke_tool_impl"):
         raise RuntimeError(
-            "agents SDK FunctionTool invoker shape changed: cannot install the "
-            "result transform without risking it being silently skipped."
+            "agents SDK FunctionTool invoker shape changed: cannot swap the tool "
+            "invoke without risking it being silently skipped."
         )
-    invoker._invoke_tool_impl = _invoke
+    invoker._invoke_tool_impl = invoke
+
+
+def _mcp_result_to_tool_output(server: MCPServer, result: Any) -> Any:
+    """Serialize a ``CallToolResult`` to a tool output, mirroring the agents SDK.
+
+    This reproduces the serialization in ``agents.mcp.util.MCPUtil.invoke_mcp_tool``
+    (structured-content JSON when the server asks for it, otherwise text/image
+    content blocks, unwrapping a single block). Because the stock path now routes
+    its own call, this is what makes the agent see byte-identical content to what
+    the SDK would have produced on its own.
+    """
+    if getattr(server, "use_structured_content", False) and result.structuredContent:
+        return json.dumps(result.structuredContent)
+
+    outputs: list[dict[str, Any]] = []
+    for item in result.content:
+        if item.type == "text":
+            outputs.append({"type": "text", "text": item.text})
+        elif item.type == "image":
+            outputs.append(
+                {"type": "image", "image_url": f"data:{item.mimeType};base64,{item.data}"}
+            )
+        else:
+            outputs.append({"type": "text", "text": str(item.model_dump(mode="json"))})
+    if len(outputs) == 1:
+        return outputs[0]
+    return outputs
+
+
+def _install_error_status_capture(
+    tool: FunctionTool,
+    server: MCPServer,
+    base_tool_name: str,
+    namespaced_name: str,
+) -> None:
+    """Make an errored MCP result read as failed in the TUI, agent content unchanged.
+
+    The stock SDK invoke returns only the text/image tool output and drops the
+    ``CallToolResult.isError`` flag, so the TUI cannot tell an errored MCP call
+    (which it renders as a green "done") from a successful one. We route the call
+    the same way :func:`_install_result_transform` does, read ``isError`` off the
+    full result, and on an error tag the returned output dict with
+    ``success: False``.
+
+    That tag reaches the human-facing status but not the agent. The SDK stores the
+    raw return value on the run item's ``output`` (which the TUI reads to derive a
+    tool's status), but hands the agent the value re-projected through its
+    ToolOutput schema, which keeps only the known ``type``/``text`` fields and
+    drops the extra ``success`` key. So the status flips to failed while the agent
+    still receives exactly the same error content it does today. Non-error calls
+    return the stock output unchanged and keep rendering as done.
+    """
+
+    async def _invoke(_ctx: Any, input_json: str) -> Any:
+        parsed: Any = json.loads(input_json) if input_json else {}
+        if not isinstance(parsed, dict):
+            raise ModelBehaviorError(
+                f"Invalid JSON input for tool {namespaced_name}: expected a JSON object"
+            )
+        args = cast("dict[str, Any]", parsed)
+        result = await server.call_tool(base_tool_name, args)
+        tool_output = _mcp_result_to_tool_output(server, result)
+        if getattr(result, "isError", False) and isinstance(tool_output, dict):
+            return {**tool_output, "success": False}
+        return tool_output
+
+    _replace_tool_invoke(tool, _invoke)
 
 
 async def _register_server_tools(

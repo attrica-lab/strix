@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from strix.agents import factory
 from strix.core.runner import _mcp_connection_notes
+from strix.interface.tui.live_view import _tool_status_from_result
 from strix.tools.mcp import (
     BearerAuth,
     ConnectedMcpServer,
@@ -342,6 +343,54 @@ async def test_without_result_transform_output_is_unchanged() -> None:
     # Same shape the SDK produces today: no transform in the path.
     assert server.calls == [("list_files", {})]
     assert output == {"type": "text", "text": "routed:list_files"}
+
+
+# --- error status capture ----------------------------------------------------
+
+
+class ErroringMCPServer(FakeMCPServer):
+    """A connected server whose calls come back as MCP errors (isError=True)."""
+
+    async def call_tool(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any] | None,
+        meta: dict[str, Any] | None = None,
+    ) -> CallToolResult:
+        self.calls.append((tool_name, arguments))
+        return CallToolResult(
+            content=[TextContent(type="text", text=f"boom:{tool_name}")],
+            isError=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_errored_mcp_result_is_flagged_failed_for_the_tui() -> None:
+    server = ErroringMCPServer("files_main", [_mcp_tool("list_files")])
+
+    tools: list[Tool] = await _register_server_tools(
+        _config("files_main", ["list_files"]), server
+    )
+    output = await tools[0].on_invoke_tool(None, "{}")  # type: ignore[union-attr]
+
+    # The error text stays exactly what the agent gets today; a success:False tag
+    # rides alongside it purely so the TUI can tell the call apart from a success.
+    assert output == {"type": "text", "text": "boom:list_files", "success": False}
+    assert _tool_status_from_result(output) == "failed"
+
+
+@pytest.mark.asyncio
+async def test_successful_mcp_result_stays_completed_for_the_tui() -> None:
+    server = FakeMCPServer("files_main", [_mcp_tool("list_files")])
+
+    tools: list[Tool] = await _register_server_tools(
+        _config("files_main", ["list_files"]), server
+    )
+    output = await tools[0].on_invoke_tool(None, "{}")  # type: ignore[union-attr]
+
+    # A non-error result is untouched and keeps rendering as done.
+    assert output == {"type": "text", "text": "routed:list_files"}
+    assert _tool_status_from_result(output) == "completed"
 
 
 # --- server build branch -----------------------------------------------------
