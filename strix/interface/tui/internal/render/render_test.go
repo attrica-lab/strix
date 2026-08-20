@@ -203,7 +203,7 @@ func TestToolDispatchCoversKnownTools(t *testing.T) {
 		{
 			"unknown tool falls back to generic",
 			tool("brand_new_tool", map[string]any{"alpha": "1"}, "done", "completed"),
-			[]string{"brand_new_tool", "alpha", "Result:", "done"},
+			[]string{"brand_new_tool", "alpha", "Done"},
 		},
 	}
 
@@ -211,6 +211,18 @@ func TestToolDispatchCoversKnownTools(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			requireContains(t, Tool(tc.data), tc.wants...)
 		})
+	}
+}
+
+func TestGenericToolOmitsRawResult(t *testing.T) {
+	// The generic/MCP renderer shows tool name, args, and a status line only —
+	// never the raw result payload.
+	long := strings.Repeat("x", 5000)
+	out := ansi.Strip(Tool(tool("db_query", map[string]any{"query": "select 1"}, long, "completed")))
+
+	requireContains(t, out, "db_query", "query", "Done")
+	if strings.Contains(out, "Result:") || strings.Contains(out, strings.Repeat("x", 20)) {
+		t.Fatalf("generic result body must not be rendered:\n%s", out)
 	}
 }
 

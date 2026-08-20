@@ -13,7 +13,6 @@ from pydantic import ValidationError
 
 from strix.agents import factory
 from strix.tools.mcp import (
-    AwsSigV4Auth,
     BearerAuth,
     McpConnectionConfig,
     load_user_mcp_configs,
@@ -102,39 +101,17 @@ def _reset_registry() -> Any:
 def test_bearer_config_parses_from_dict() -> None:
     config = McpConnectionConfig.model_validate(
         {
-            "name": "vercel_main",
+            "name": "files_main",
             "transport": "http",
             "url": "https://mcp.example.com",
             "auth": {"kind": "bearer", "token": "abc"},
-            "allowed_tools": ["list_projects"],
+            "allowed_tools": ["list_files"],
         }
     )
 
     assert isinstance(config.auth, BearerAuth)
     assert config.auth.token == "abc"
-    assert config.allowed_tools == ["list_projects"]
-
-
-def test_aws_sigv4_config_parses_from_dict() -> None:
-    config = McpConnectionConfig.model_validate(
-        {
-            "name": "aws_production",
-            "url": "https://mcp.example.com",
-            "auth": {
-                "kind": "aws_sigv4",
-                "access_key_id": "AKIA",
-                "secret_access_key": "secret",
-                "session_token": "session",
-                "region": "us-east-1",
-            },
-        }
-    )
-
-    assert isinstance(config.auth, AwsSigV4Auth)
-    assert config.auth.region == "us-east-1"
-    # transport defaults to http, allowed_tools to None ("all tools").
-    assert config.transport == "http"
-    assert config.allowed_tools is None
+    assert config.allowed_tools == ["list_files"]
 
 
 def test_unknown_auth_kind_is_rejected() -> None:
@@ -216,24 +193,9 @@ def test_unknown_field_is_rejected() -> None:
 
 
 def test_bearer_auth_builds_authorization_header() -> None:
-    headers = _auth_headers(_config("vercel_main", []))
+    headers = _auth_headers(_config("files_main", []))
 
     assert headers == {"Authorization": "Bearer run-token"}
-
-
-def test_aws_sigv4_auth_is_not_implemented_yet() -> None:
-    config = McpConnectionConfig(
-        name="aws_production",
-        url="https://mcp.example.com",
-        auth=AwsSigV4Auth(
-            access_key_id="AKIA",
-            secret_access_key="secret",
-            region="us-east-1",
-        ),
-    )
-
-    with pytest.raises(NotImplementedError):
-        _auth_headers(config)
 
 
 # --- namespacing and filtering -----------------------------------------------
@@ -258,15 +220,15 @@ async def test_tools_are_namespaced_per_connection() -> None:
 @pytest.mark.asyncio
 async def test_disallowed_tool_is_not_registered() -> None:
     server = FakeMCPServer(
-        "vercel_main",
-        [_mcp_tool("list_projects"), _mcp_tool("delete_project")],
+        "files_main",
+        [_mcp_tool("list_files"), _mcp_tool("search")],
     )
 
-    await _register_server_tools(_config("vercel_main", ["list_projects"]), server)
+    await _register_server_tools(_config("files_main", ["list_files"]), server)
 
     names = _registered_names()
-    assert "vercel_main.list_projects" in names
-    assert "vercel_main.delete_project" not in names
+    assert "files_main.list_files" in names
+    assert "files_main.search" not in names
 
 
 @pytest.mark.asyncio
@@ -299,18 +261,18 @@ async def test_allowed_tools_list_restricts_registration() -> None:
 
 @pytest.mark.asyncio
 async def test_registered_tool_routes_to_its_server_with_the_original_name() -> None:
-    server = FakeMCPServer("vercel_main", [_mcp_tool("list_projects")])
+    server = FakeMCPServer("files_main", [_mcp_tool("list_files")])
 
     tools: list[Tool] = await _register_server_tools(
-        _config("vercel_main", ["list_projects"]), server
+        _config("files_main", ["list_files"]), server
     )
     tool = tools[0]
 
     output = await tool.on_invoke_tool(None, "{}")  # type: ignore[union-attr]
 
     # The call reaches the right server, addressed by the unprefixed remote name.
-    assert server.calls == [("list_projects", {})]
-    assert output == {"type": "text", "text": "routed:list_projects"}
+    assert server.calls == [("list_files", {})]
+    assert output == {"type": "text", "text": "routed:list_files"}
 
 
 # --- result transform --------------------------------------------------------
@@ -318,64 +280,64 @@ async def test_registered_tool_routes_to_its_server_with_the_original_name() -> 
 
 @pytest.mark.asyncio
 async def test_result_transform_receives_namespaced_name_and_structured_result() -> None:
-    server = FakeMCPServer("vercel_main", [_mcp_tool("list_projects")])
+    server = FakeMCPServer("files_main", [_mcp_tool("list_files")])
     seen: list[tuple[str, Any]] = []
 
     def transform(name: str, structured: Any) -> Any:
         seen.append((name, structured))
-        return "scrubbed"
+        return {"kept": structured["content"][0]["text"]}
 
     tools: list[Tool] = await _register_server_tools(
-        _config("vercel_main", ["list_projects"]), server, result_transform=transform
+        _config("files_main", ["list_files"]), server, result_transform=transform
     )
 
     output = await tools[0].on_invoke_tool(None, "{}")  # type: ignore[union-attr]
 
     # The underlying MCP call still routes by the unprefixed remote name.
-    assert server.calls == [("list_projects", {})]
+    assert server.calls == [("list_files", {})]
 
     # The transform is called with the namespaced name and the parsed result.
     assert len(seen) == 1
     name, structured = seen[0]
-    assert name == "vercel_main.list_projects"
+    assert name == "files_main.list_files"
     # A parsed CallToolResult (dict/list), not a pre-serialized string.
-    assert structured["content"][0]["text"] == "routed:list_projects"
+    assert structured["content"][0]["text"] == "routed:list_files"
     assert structured["isError"] is False
 
     # The transform's return value is exactly what the tool yields.
-    assert output == "scrubbed"
+    assert output == {"kept": "routed:list_files"}
 
 
 @pytest.mark.asyncio
 async def test_result_transform_can_rewrite_the_tool_output() -> None:
-    server = FakeMCPServer("vercel_main", [_mcp_tool("list_projects")])
+    server = FakeMCPServer("files_main", [_mcp_tool("list_files")])
 
     def transform(_name: str, structured: Any) -> Any:
-        # Withhold everything but a redacted view of the text field.
-        return f"redacted<{structured['content'][0]['text']}>"
+        # Keep only a truncated view of the text field.
+        return structured["content"][0]["text"][:6]
 
     tools: list[Tool] = await _register_server_tools(
-        _config("vercel_main", ["list_projects"]), server, result_transform=transform
+        _config("files_main", ["list_files"]), server, result_transform=transform
     )
 
     output = await tools[0].on_invoke_tool(None, "{}")  # type: ignore[union-attr]
 
-    assert output == "redacted<routed:list_projects>"
+    assert output == "routed"
 
 
 @pytest.mark.asyncio
 async def test_without_result_transform_output_is_unchanged() -> None:
-    server = FakeMCPServer("vercel_main", [_mcp_tool("list_projects")])
+    server = FakeMCPServer("files_main", [_mcp_tool("list_files")])
 
     tools: list[Tool] = await _register_server_tools(
-        _config("vercel_main", ["list_projects"]), server, result_transform=None
+        _config("files_main", ["list_files"]), server, result_transform=None
     )
 
     output = await tools[0].on_invoke_tool(None, "{}")  # type: ignore[union-attr]
 
     # Same shape the SDK produces today: no transform in the path.
-    assert server.calls == [("list_projects", {})]
-    assert output == {"type": "text", "text": "routed:list_projects"}
+    assert server.calls == [("list_files", {})]
+    assert output == {"type": "text", "text": "routed:list_files"}
 
 
 # --- server build branch -----------------------------------------------------
@@ -401,10 +363,10 @@ def test_build_server_stdio_branch() -> None:
 
 
 def test_build_server_http_branch() -> None:
-    server = _build_server(_config("vercel_main", ["list_projects"]))
+    server = _build_server(_config("files_main", ["list_files"]))
 
     assert isinstance(server, MCPServerStreamableHttp)
-    assert server.name == "vercel_main"
+    assert server.name == "files_main"
 
 
 # --- loader ------------------------------------------------------------------
@@ -422,11 +384,11 @@ def test_loader_parses_stdio_and_http_entries(tmp_path: Path) -> None:
                     "args": ["-y", "server-filesystem"],
                 },
                 {
-                    "name": "vercel_main",
+                    "name": "files_main",
                     "transport": "http",
                     "url": "https://mcp.example.com",
                     "auth": {"kind": "bearer", "token": "abc"},
-                    "allowed_tools": ["list_projects"],
+                    "allowed_tools": ["list_files"],
                 },
             ]
         ),
@@ -435,9 +397,9 @@ def test_loader_parses_stdio_and_http_entries(tmp_path: Path) -> None:
 
     configs = load_user_mcp_configs(config_file)
 
-    assert [c.name for c in configs] == ["local_fs", "vercel_main"]
+    assert [c.name for c in configs] == ["local_fs", "files_main"]
     assert configs[0].transport == "stdio"
-    assert configs[1].allowed_tools == ["list_projects"]
+    assert configs[1].allowed_tools == ["list_files"]
 
 
 def test_loader_skips_bad_entry_but_keeps_good_ones(tmp_path: Path) -> None:

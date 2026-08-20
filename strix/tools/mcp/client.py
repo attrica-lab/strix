@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from agents.exceptions import ModelBehaviorError
 from agents.mcp import (
@@ -29,7 +29,6 @@ from agents.mcp import (
 )
 
 from strix.agents.factory import register_agent_tools
-from strix.tools.mcp.config import BearerAuth, McpConnectionConfig
 
 
 if TYPE_CHECKING:
@@ -37,6 +36,8 @@ if TYPE_CHECKING:
 
     from agents.tool import FunctionTool, Tool
     from mcp.types import Tool as MCPTool
+
+    from strix.tools.mcp.config import McpConnectionConfig
 
     # Runs on each tool's structured result before it reaches the agent. Called
     # ``result_transform(namespaced_tool_name, structured_result)`` and its return
@@ -49,23 +50,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class ConnectedMcpServer(NamedTuple):
+    """One successfully connected MCP server and how many tools it registered.
+
+    ``server`` is kept so the caller can clean it up when the run ends;
+    ``name`` and ``tool_count`` let the caller show the user a startup summary.
+    """
+
+    server: MCPServer
+    name: str
+    tool_count: int
+
+
 def _auth_headers(config: McpConnectionConfig) -> dict[str, str]:
     """Build the per-server request headers from the connection's auth."""
     auth = config.auth
     if auth is None:
         return {}
-    if isinstance(auth, BearerAuth):
-        return {"Authorization": f"Bearer {auth.token}"}
-
-    # The only other variant is AWS SigV4.
-    # TODO: AWS SigV4 transport and auth are UNVERIFIED. Confirm how the target
-    # AWS MCP server is reached (stdio vs streamable HTTP) and how it accepts
-    # SigV4-signed requests before enabling this branch. Do not fabricate request
-    # signing here.
-    raise NotImplementedError(
-        "AWS SigV4 MCP auth is not verified yet; confirm the server's transport "
-        "and request signing before connecting an aws_sigv4 connection."
-    )
+    return {"Authorization": f"Bearer {auth.token}"}
 
 
 def _build_server(config: McpConnectionConfig) -> MCPServer:
@@ -209,7 +211,7 @@ async def _register_server_tools(
 async def connect_mcp_servers(
     configs: list[McpConnectionConfig],
     result_transform: ResultTransform | None = None,
-) -> list[MCPServer]:
+) -> list[ConnectedMcpServer]:
     """Connect to each MCP server and register its tools.
 
     When ``result_transform`` is given, every registered tool routes its result
@@ -217,21 +219,28 @@ async def connect_mcp_servers(
     :func:`_install_result_transform`). When it is ``None`` the tools behave
     exactly as the SDK builds them.
 
-    Returns the servers that connected, so the caller can clean them up when the
-    run ends. Connections that fail are skipped rather than raised.
+    Returns one :class:`ConnectedMcpServer` per server that connected, carrying
+    the SDK server (so the caller can clean it up when the run ends) plus the
+    server name and how many tools it registered (so the caller can show the
+    user a startup summary). Connections that fail are skipped rather than
+    raised.
     """
-    connected: list[MCPServer] = []
+    connected: list[ConnectedMcpServer] = []
     for config in configs:
-        server = _build_server(config)
+        server: MCPServer | None = None
         try:
+            server = _build_server(config)
             await server.connect()  # type: ignore[no-untyped-call]
             tools = await _register_server_tools(config, server, result_transform)
         except Exception:
             logger.exception("Skipping MCP connection %r", config.name)
-            await server.cleanup()  # type: ignore[no-untyped-call]
+            if server is not None:
+                await server.cleanup()  # type: ignore[no-untyped-call]
             continue
 
         logger.info("Connected MCP server %r (%d tools)", config.name, len(tools))
-        connected.append(server)
+        connected.append(
+            ConnectedMcpServer(server=server, name=config.name, tool_count=len(tools))
+        )
 
     return connected

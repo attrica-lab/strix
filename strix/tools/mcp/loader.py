@@ -2,8 +2,8 @@
 
 An open-source user lists the MCP servers they want the agent to reach in a
 small JSON file. Strix reads it at the start of a run, connects to each server,
-and registers its tools. The file is optional: a managed/saas run simply won't
-have one, which is fine.
+and registers its tools. The file is optional; without it the run simply gets
+no MCP tools.
 
 Parsing is fail-open. A single malformed entry is logged and skipped rather than
 raising, so one bad row never blocks the servers that are valid, and a missing

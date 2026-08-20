@@ -333,11 +333,11 @@ Strix can connect to Model Context Protocol (MCP) servers you list and expose th
     "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/project"]
   },
   {
-    "name": "vercel",
+    "name": "github",
     "transport": "http",
-    "url": "https://mcp.vercel.com",
+    "url": "https://api.githubcopilot.com/mcp/",
     "auth": { "kind": "bearer", "token": "your-token" },
-    "allowed_tools": ["list_projects"]
+    "allowed_tools": ["list_issues"]
   }
 ]
 ```

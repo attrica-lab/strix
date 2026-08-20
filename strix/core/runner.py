@@ -56,11 +56,22 @@ if TYPE_CHECKING:
     from agents.result import RunResultBase
 
     from strix.runtime.status import StatusSink
+    from strix.tools.mcp import ConnectedMcpServer
 
 
 logger = logging.getLogger(__name__)
 
 StreamEventSink = Callable[[str, Any], None]
+
+
+def _mcp_startup_summary(connections: list[ConnectedMcpServer]) -> str:
+    """One user-facing line summarizing the MCP servers that connected."""
+    server_count = len(connections)
+    tool_count = sum(c.tool_count for c in connections)
+    servers_word = "server" if server_count == 1 else "servers"
+    tools_word = "tool" if tool_count == 1 else "tools"
+    names = ", ".join(c.name for c in connections)
+    return f"MCP: connected {server_count} {servers_word} ({tool_count} {tools_word}): {names}"
 
 
 def _merge_root_prompt_context(
@@ -301,15 +312,17 @@ async def run_strix_scan(
         )
 
         # Connect any MCP servers the user listed in ~/.strix/mcp-servers.json and
-        # register their tools before the agent is built. These are the user's own
-        # servers, so no result scrub is applied. Fully fail-open: a missing file or
-        # a failed connection must never break a normal run (a managed run has no file).
+        # register their tools before the agent is built. Fail-open: a missing
+        # config, or a server that will not connect, must never break a run.
         from strix.tools.mcp import connect_mcp_servers, load_user_mcp_configs
 
         try:
             user_mcp_configs = load_user_mcp_configs()
             if user_mcp_configs:
-                mcp_servers = await connect_mcp_servers(user_mcp_configs)
+                connections = await connect_mcp_servers(user_mcp_configs)
+                mcp_servers = [c.server for c in connections]
+                if connections:
+                    report(_mcp_startup_summary(connections))
         except Exception:
             logger.exception("Failed to connect user MCP servers; continuing without them")
 

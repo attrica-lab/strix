@@ -22,19 +22,20 @@ func statusIcon(status string) (string, lipgloss.Style) {
 	return "○ Unknown", Dim()
 }
 
-// renderGenericTool ports registry._render_default_tool_widget.
-func renderGenericTool(name string, args map[string]any, result any, status string) string {
+// renderGenericTool ports registry._render_default_tool_widget. It shows the
+// tool name, its arguments, and a status line only. The raw result is
+// deliberately not rendered: a generic/MCP result (e.g. a multi-kilobyte JSON
+// payload from a database query tool) is noise on screen, and the agent narrates
+// what it got in its next message. The full result still lives in the event
+// data, the run log, and the `strix view` viewer.
+func renderGenericTool(name string, args map[string]any, status string) string {
 	var b strings.Builder
 	b.WriteString(Dim().Render("→ Using tool ") + Bold(Blue).Render(name) + "\n")
 	for _, k := range SortedKeys(args) {
 		b.WriteString("  " + Dim().Render(k) + ": " + StringValue(args[k]) + "\n")
 	}
-	if (status == "completed" || status == "failed" || status == "error") && result != nil {
-		b.WriteString(lipgloss.NewStyle().Bold(true).Render("Result: ") + StringValue(result))
-	} else {
-		icon, style := statusIcon(status)
-		b.WriteString(style.Render(icon))
-	}
+	icon, style := statusIcon(status)
+	b.WriteString(style.Render(icon))
 	return b.String()
 }
 
@@ -87,7 +88,7 @@ func Tool(data map[string]any) string {
 	case "list_requests", "view_request", "repeat_request", "list_sitemap", "view_sitemap_entry", "scope_rules":
 		return renderProxyTool(name, args, result, status)
 	}
-	return renderGenericTool(name, args, result, status)
+	return renderGenericTool(name, args, status)
 }
 
 // ---------------------------------------------------------------------------

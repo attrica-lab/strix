@@ -21,24 +21,7 @@ class BearerAuth(BaseModel):
     token: str = Field(min_length=1, repr=False)
 
 
-class AwsSigV4Auth(BaseModel):
-    """Request-signing auth for AWS.
-
-    AWS does not authenticate with a header token; each request is signed. The
-    temporary key is minted per run and passed out of band, never read from the
-    ambient environment.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    kind: Literal["aws_sigv4"] = "aws_sigv4"
-    access_key_id: str = Field(min_length=1, repr=False)
-    secret_access_key: str = Field(min_length=1, repr=False)
-    session_token: str | None = Field(default=None, repr=False)
-    region: str = Field(min_length=1)
-
-
-McpAuth = Annotated[BearerAuth | AwsSigV4Auth, Field(discriminator="kind")]
+McpAuth = Annotated[BearerAuth, Field(discriminator="kind")]
 
 
 class McpConnectionConfig(BaseModel):
@@ -60,8 +43,8 @@ class McpConnectionConfig(BaseModel):
     """The MCP server endpoint. Required for ``http``."""
 
     auth: McpAuth | None = None
-    """Bearer token or AWS SigV4 signing material. Optional; a local stdio
-    server usually needs none."""
+    """Bearer token for the server. Optional; a local stdio server usually
+    needs none."""
 
     command: str | None = Field(default=None, min_length=1)
     """The executable to launch for ``stdio``. Required for ``stdio``."""
