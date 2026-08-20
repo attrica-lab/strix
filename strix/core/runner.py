@@ -51,6 +51,7 @@ from strix.tools.output_store import (
 
 
 if TYPE_CHECKING:
+    from agents.mcp import MCPServer
     from agents.memory import SQLiteSession
     from agents.result import RunResultBase
 
@@ -253,6 +254,7 @@ async def run_strix_scan(
     configure_spill_writer(_spill_to_workspace)
 
     sessions_to_close: list[SQLiteSession] = []
+    mcp_servers: list[MCPServer] = []
 
     try:
         targets = scan_config.get("targets") or []
@@ -297,6 +299,19 @@ async def run_strix_scan(
             interactive=interactive,
             system_prompt_context=root_context,
         )
+
+        # Connect any MCP servers the user listed in ~/.strix/mcp-servers.json and
+        # register their tools before the agent is built. These are the user's own
+        # servers, so no result scrub is applied. Fully fail-open: a missing file or
+        # a failed connection must never break a normal run (a managed run has no file).
+        from strix.tools.mcp import connect_mcp_servers, load_user_mcp_configs
+
+        try:
+            user_mcp_configs = load_user_mcp_configs()
+            if user_mcp_configs:
+                mcp_servers = await connect_mcp_servers(user_mcp_configs)
+        except Exception:
+            logger.exception("Failed to connect user MCP servers; continuing without them")
 
         root_agent = build_strix_agent(
             name="Root Agent",
@@ -472,6 +487,9 @@ async def run_strix_scan(
         for s in sessions_to_close:
             with contextlib.suppress(Exception):
                 s.close()
+        for mcp_server in mcp_servers:
+            with contextlib.suppress(Exception):
+                await mcp_server.cleanup()  # type: ignore[no-untyped-call]
         with contextlib.suppress(Exception):
             await coordinator._maybe_snapshot()
         if cleanup_on_exit:
