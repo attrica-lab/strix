@@ -9,9 +9,9 @@ metadata:
 
 # Security-test an API
 
-APIs fail differently from web UIs: there's no rendered surface to crawl, the interesting bugs are authorization-shaped rather than injection-shaped, and the same endpoint behaves differently per token. This workflow targets those specifics with Strix's autonomous agents, using the current [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/) as the coverage checklist. For the web-app equivalent, the current edition is the OWASP Top 10:2025 — see **owasp-top-10-testing**.
+APIs fail differently from web UIs: there is no rendered surface to crawl, the interesting bugs are authorization-shaped rather than injection-shaped, and the same endpoint behaves differently per token. This workflow targets those specifics with Strix's autonomous agents, using the current [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/) as the coverage checklist. For the web-app equivalent, the current edition is the OWASP Top 10:2025 — see **owasp-top-10-testing**.
 
-Install, LLM setup, full CLI flags, and the managed-cloud path are in the **penetration-testing-with-strix** skill. Read it if `strix --version` fails or the target isn't an API.
+Install, LLM setup, full CLI flags, and the managed-cloud path are in the **penetration-testing-with-strix** skill. Read it if `strix --version` fails or the target is not an API.
 
 ## 1. Gather what the agents need
 
@@ -19,27 +19,30 @@ APIs are near-impossible to test blind, so collect first:
 
 | Input | Why it matters |
 |---|---|
-| **Schema** — OpenAPI/Swagger URL or file, GraphQL endpoint (introspection), or `.proto` | Turns guesswork into full endpoint enumeration. Biggest single win in coverage. |
+| **Schema** — OpenAPI/Swagger file, Postman collection, GraphQL endpoint (introspection), or `.proto` | Turns guesswork into full endpoint enumeration. Biggest single win in coverage, and Strix takes a spec directly as a target. |
 | **Two sets of credentials/tokens**, ideally in different tenants | BOLA/IDOR — API1:2023, still the #1 API risk — can only be *proven* by accessing tenant A's objects with tenant B's token. |
 | **A low-privilege and a high-privilege token** | Required to prove broken function-level authorization (API5:2023 — a `user` calling admin-only routes). |
 | **Example object IDs** | Lets agents test ID tampering immediately instead of hunting for valid identifiers. |
 | **Out-of-scope routes** | Payments, mass notification, destructive admin endpoints. |
 | **Rate limits / WAF** in front of the API | Avoids agents burning budget on throttled requests; mention them so testing adapts. |
 
-Ask the user for anything missing — don't fabricate tokens or scan an API they don't own.
+Ask the user for anything missing — do not fabricate tokens or scan an API they do not own.
 
 ## 2. Run the scan
 
+Pass the spec as a **target**, not as prose in the instruction — Strix parses OpenAPI/Swagger (`.json`/`.yaml`) and Postman collection exports directly, so the agents start from the real endpoint list:
+
 ```bash
-strix -n -t https://api.staging.example.com --max-budget 20 \
-  --instruction "OpenAPI spec: https://api.staging.example.com/openapi.json.
-Tenant A token: <tokenA> (org 1111, user id 11, order id 501).
+strix -n -t ./openapi.yaml -t https://api.staging.example.com --max-budget 20 \
+  --instruction "Tenant A token: <tokenA> (org 1111, user id 11, order id 501).
 Tenant B token: <tokenB> (org 2222, user id 22).
 Admin token: <tokenAdmin>.
 Focus: BOLA across orgs (API1), function-level authz on /admin/* (API5), object property level authz on PATCH /users/{id} — both mass assignment and over-exposed fields in list responses (API3), unrestricted resource consumption (API4).
 Out of scope: POST /billing/*, POST /notifications/broadcast."
 ```
 
+- **Postman instead of OpenAPI:** a collection export works as a target (`-t ./collection.postman_collection.json`), or pull one live with `-t postman://<collection-uuid>` (optionally `"postman://<collection-uuid>?env=<environment-uuid>"`), which needs `POSTMAN_API_KEY` in the environment.
+- **Many services at once:** put one target per line in a file and pass `--target-list ./targets.txt`, repeatable and combinable with `-t`.
 - **Add the backend source for depth:** `-t ./services/api -t https://api.staging.example.com`. With code access the agents can reason about authorization checks and object ownership rather than inferring them from responses.
 - **GraphQL:** point at the GraphQL endpoint and say whether introspection is enabled; call out that you want batching/aliasing abuse, depth/complexity limits, and per-field authorization tested.
 - **Internal/private APIs** unreachable from your machine: use the managed platform's network connector — see **managed-pentesting-with-strix**.
@@ -47,7 +50,7 @@ Out of scope: POST /billing/*, POST /notifications/broadcast."
 
 ## 3. Verify findings
 
-`strix_runs/<run>/penetration_test_report.md` first, then `vulnerabilities/*.md` — each contains the exact request that proved the issue. Replay it (e.g. with `curl`) before reporting; for authorization findings, confirm the response really contains the other tenant's data rather than an empty 200.
+`strix_runs/<run>/penetration_test_report.md` first, then `vulnerabilities/*.md` — each contains the exact request that proved the issue. Replay it (for example, with `curl`) before reporting; for authorization findings, confirm the response really contains the other tenant's data rather than an empty 200.
 
 `findings.sarif` uploads to GitHub code scanning; `vulnerabilities.json` is the structured index for ticketing.
 

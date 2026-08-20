@@ -22,9 +22,14 @@ strix -n -t ./ --scan-mode standard --max-budget 15
 # A GitHub repo directly
 strix -n -t https://github.com/org/app --max-budget 15
 
-# Large monorepo: bind-mount instead of copying in
-strix -n --mount ./huge-monorepo --max-budget 20
+# Monorepo: point at the service that matters, not the whole tree
+strix -n -t ./services/checkout --max-budget 20
+
+# Only what a branch changed (whole-repo review is wasteful on a large repo)
+strix -n -t ./ --scope-mode diff --diff-base origin/main --max-budget 10
 ```
+
+A local path is mounted into the sandbox **writable**, so the agents can modify it. Run against a clean checkout.
 
 Two things sharply improve results:
 
@@ -34,7 +39,7 @@ Two things sharply improve results:
    strix -n -t ./services/api --max-budget 15 \
      --instruction "Focus on the authorization layer in src/auth and every route under src/routes/admin. Multi-tenant app: tenant id comes from the JWT. Flag any query that filters by object id without also filtering by tenant."
    ```
-   Tenancy model, trust boundaries, and which inputs are attacker-controlled are things the agents can't infer reliably — tell them.
+   Tenancy model, trust boundaries, and which inputs are attacker-controlled are things the agents cannot infer reliably — tell them.
 
 ## Reviewing a pull request instead of the whole repo
 
@@ -50,7 +55,7 @@ Exit `0` means nothing exploitable was proven in what was analyzed — not that 
 
 ## Complementary tooling
 
-This is exploit-validated review, not an exhaustive inventory. Keep a dependency scanner (SCA) and secret scanning in place for complete coverage of known-CVE dependencies and committed credentials; use this for the logic, authorization, and injection bugs those tools structurally can't find.
+This is exploit-validated review, not an exhaustive inventory. Keep a dependency scanner (SCA) and secret scanning in place for complete coverage of known-CVE dependencies and committed credentials; use this for the logic, authorization, and injection bugs those tools structurally cannot find.
 
 ## Fix and verify
 

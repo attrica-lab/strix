@@ -15,7 +15,7 @@ The OWASP Top 10 is a taxonomy of risk categories, not a test suite — "OWASP T
 
 Install, LLM setup, and the managed-cloud alternative: **penetration-testing-with-strix**.
 
-## What is and isn't testable by an agent
+## What is and is not testable by an agent
 
 Be straight with the user about this — claiming a clean sweep of all ten is misleading.
 
@@ -55,7 +55,7 @@ Out of scope: /billing/*, outbound email."
 
 ## Report honestly
 
-From `strix_runs/<run>/`, group `vulnerabilities/*.md` by category and state, per category: what was attempted, what was proven, and what couldn't be assessed (A09 always; A03/A04/A06/A08/A10 partially). Label the report with the edition used. Verify each PoC yourself before it goes in front of the user.
+From `strix_runs/<run>/`, group `vulnerabilities/*.md` by category and state, per category: what was attempted, what was proven, and what could not be assessed (A09 always; A03/A04/A06/A08/A10 partially). Label the report with the edition used. Verify each PoC yourself before it goes in front of the user.
 
 A `0` exit code means nothing exploitable was proven **in what was analyzed** — check `run.json` status and cost against `--max-budget`; a budget-capped run is not a completed assessment.
 

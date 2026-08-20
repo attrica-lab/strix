@@ -11,13 +11,13 @@ metadata:
 
 Black-box (and optionally source-assisted) penetration testing of a running web app with Strix's autonomous agents. Every reported finding is validated with a working exploit, so there are no signature-based false positives to triage.
 
-Install, LLM setup, all CLI flags, and the managed-cloud alternative are covered in the **penetration-testing-with-strix** skill — read it if the target isn't a running web app, or if `strix --version` fails. This skill is the web-app-specific workflow.
+Install, LLM setup, all CLI flags, and the managed-cloud alternative are covered in the **penetration-testing-with-strix** skill — read it if the target is not a running web app, or if `strix --version` fails. This skill is the web-app-specific workflow.
 
 ## 1. Confirm authorization and scope
 
 Before running anything, establish:
 
-- **The target is the user's** (or they're explicitly authorized to test it). Never pentest a third-party site on a hunch.
+- **The target is the user's** (or they are explicitly authorized to test it). Never pentest a third-party site on a hunch.
 - **Which environment.** Prefer staging over production; agents send real exploit payloads and will create/modify data.
 - **Out-of-scope paths** — payment flows, mass-email endpoints, admin destructive actions, third-party SSO providers.
 - **Credentials.** Most real vulnerabilities live behind login. Without a test account, the agents only ever see the marketing surface.
