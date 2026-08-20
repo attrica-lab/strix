@@ -13,6 +13,7 @@ and skipped, so one bad connection never fails the run.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
@@ -54,12 +55,15 @@ class ConnectedMcpServer(NamedTuple):
     """One successfully connected MCP server and how many tools it registered.
 
     ``server`` is kept so the caller can clean it up when the run ends;
-    ``name`` and ``tool_count`` let the caller show the user a startup summary.
+    ``name`` and ``tool_count`` let the caller show the user a startup summary;
+    ``notes`` carries the connection's optional free-text description so the
+    caller can surface it to the agent as context about the connection.
     """
 
     server: MCPServer
     name: str
     tool_count: int
+    notes: str | None = None
 
 
 def _auth_headers(config: McpConnectionConfig) -> dict[str, str]:
@@ -235,12 +239,28 @@ async def connect_mcp_servers(
         except Exception:
             logger.exception("Skipping MCP connection %r", config.name)
             if server is not None:
-                await server.cleanup()  # type: ignore[no-untyped-call]
+                with contextlib.suppress(Exception):
+                    await server.cleanup()  # type: ignore[no-untyped-call]
             continue
+        except BaseException:
+            # A cancellation (or other non-Exception failure) mid-connect must not
+            # orphan MCP subprocesses or HTTP sessions. Clean up the server being
+            # connected and every server already connected, then re-raise so the
+            # caller still stops. The runner only receives the list on a clean
+            # return, so on an abnormal exit this function owns the cleanup.
+            if server is not None:
+                with contextlib.suppress(Exception):
+                    await server.cleanup()  # type: ignore[no-untyped-call]
+            for established in connected:
+                with contextlib.suppress(Exception):
+                    await established.server.cleanup()  # type: ignore[no-untyped-call]
+            raise
 
         logger.info("Connected MCP server %r (%d tools)", config.name, len(tools))
         connected.append(
-            ConnectedMcpServer(server=server, name=config.name, tool_count=len(tools))
+            ConnectedMcpServer(
+                server=server, name=config.name, tool_count=len(tools), notes=config.notes
+            )
         )
 
     return connected

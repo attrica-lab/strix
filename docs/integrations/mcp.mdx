@@ -71,6 +71,27 @@ Strix reads this file at the start of each run. There is no default file, so no 
   server offers, or set it to a list of tool names to allow only those.
 </ParamField>
 
+<ParamField path="notes" type="string">
+  Free-text notes for the agent about what this connection is and how you want
+  it used, for example "Staging analytics database, read-only, prefer aggregate
+  queries." When set, the notes are given to the agent at the start of the run
+  as a description of the connection.
+</ParamField>
+
+## Choosing connections per run
+
+By default every connection in the file is used on each run. To narrow it for a
+single run without editing the file, use either flag (both repeatable):
+
+```bash
+strix --mcp-server github -t ...        # use only the named connection(s)
+strix --mcp-exclude staging-db -t ...   # use everything except the named one(s)
+```
+
+`--mcp-server` keeps only the connections you name; `--mcp-exclude` drops the
+ones you name. Connection names must be unique in the file; if two entries share
+a name, the first is kept and the rest are ignored.
+
 ## Pointing at a different file
 
 To read the config from another path instead of `~/.strix/mcp-servers.json`, either pass `--mcp-config <path>` on the command line:

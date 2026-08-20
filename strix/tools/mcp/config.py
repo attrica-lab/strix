@@ -59,6 +59,11 @@ class McpConnectionConfig(BaseModel):
     """Tool allowlist, applied after the server lists its tools. ``None`` (the
     default) exposes every tool the server lists; a list restricts to it."""
 
+    notes: str | None = None
+    """Free-text notes for the agent describing what this connection is and how
+    to use it. When set, they are prefixed onto each of the connection's tool
+    descriptions so the agent sees them."""
+
     @model_validator(mode="after")
     def _check_transport_fields(self) -> McpConnectionConfig:
         if self.transport == "http" and not self.url:

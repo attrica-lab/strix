@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -12,11 +13,14 @@ from mcp.types import Tool as MCPTool
 from pydantic import ValidationError
 
 from strix.agents import factory
+from strix.core.runner import _mcp_connection_notes
 from strix.tools.mcp import (
     BearerAuth,
+    ConnectedMcpServer,
     McpConnectionConfig,
     load_user_mcp_configs,
 )
+from strix.tools.mcp import client as mcp_client
 from strix.tools.mcp.client import _auth_headers, _build_server, _register_server_tools
 
 
@@ -438,3 +442,141 @@ def test_loader_reads_env_var_override(tmp_path: Path, monkeypatch: pytest.Monke
     configs = load_user_mcp_configs()
 
     assert [c.name for c in configs] == ["local_fs"]
+
+
+# --- connection notes --------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_connection_notes_are_carried_on_the_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server = FakeMCPServer("db", [_mcp_tool("query")])
+    monkeypatch.setattr(mcp_client, "_build_server", lambda _config: server)
+    config = McpConnectionConfig(
+        name="db",
+        url="https://mcp.example.com",
+        notes="Staging analytics DB; read-only.",
+        allowed_tools=["query"],
+    )
+
+    connections = await mcp_client.connect_mcp_servers([config])
+
+    # Notes ride on the connection (surfaced once), not stapled onto each tool.
+    assert connections[0].notes == "Staging analytics DB; read-only."
+
+
+def test_connection_notes_block_lists_only_noted_connections() -> None:
+    connections = [
+        ConnectedMcpServer(
+            server=FakeMCPServer("db", []), name="db", tool_count=2, notes="staging, read-only"
+        ),
+        ConnectedMcpServer(server=FakeMCPServer("fs", []), name="fs", tool_count=1, notes=None),
+    ]
+
+    block = _mcp_connection_notes(connections)
+
+    assert block is not None
+    assert "db" in block
+    assert "staging, read-only" in block
+    # A connection without notes is not listed.
+    assert "fs" not in block
+
+
+def test_connection_notes_block_is_none_without_notes() -> None:
+    connections = [
+        ConnectedMcpServer(server=FakeMCPServer("db", []), name="db", tool_count=1, notes=None)
+    ]
+
+    assert _mcp_connection_notes(connections) is None
+
+
+# --- cancellation cleanup ----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_connect_cleans_up_when_cancelled_mid_connect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cleaned: list[str] = []
+
+    class _Tracking(FakeMCPServer):
+        def __init__(self, name: str, *, fail_connect: bool = False) -> None:
+            super().__init__(name, [_mcp_tool("t")])
+            self._fail_connect = fail_connect
+
+        async def connect(self) -> None:
+            if self._fail_connect:
+                raise asyncio.CancelledError
+
+        async def cleanup(self) -> None:
+            cleaned.append(self._name)
+
+    servers = {"good": _Tracking("good"), "bad": _Tracking("bad", fail_connect=True)}
+    monkeypatch.setattr(mcp_client, "_build_server", lambda config: servers[config.name])
+
+    configs = [
+        McpConnectionConfig(name="good", url="https://mcp.example.com", allowed_tools=["t"]),
+        McpConnectionConfig(name="bad", url="https://mcp.example.com", allowed_tools=["t"]),
+    ]
+
+    with pytest.raises(asyncio.CancelledError):
+        await mcp_client.connect_mcp_servers(configs)
+
+    # The server being connected when cancelled, and the one already connected,
+    # are both cleaned up rather than orphaned.
+    assert cleaned == ["bad", "good"]
+
+
+# --- duplicate names and run selection ---------------------------------------
+
+
+def _names_file(tmp_path: Path, *names: str) -> Path:
+    config_file = tmp_path / "mcp-servers.json"
+    config_file.write_text(
+        json.dumps([{"name": n, "transport": "stdio", "command": "npx"} for n in names]),
+        encoding="utf-8",
+    )
+    return config_file
+
+
+def test_loader_drops_duplicate_named_connections(tmp_path: Path) -> None:
+    config_file = tmp_path / "mcp-servers.json"
+    config_file.write_text(
+        json.dumps(
+            [
+                {"name": "dup", "transport": "stdio", "command": "first"},
+                {"name": "dup", "transport": "stdio", "command": "second"},
+                {"name": "other", "transport": "stdio", "command": "npx"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    configs = load_user_mcp_configs(config_file)
+
+    # Duplicate name is dropped; the first entry wins.
+    assert [c.name for c in configs] == ["dup", "other"]
+    assert configs[0].command == "first"
+
+
+def test_loader_include_selection_keeps_only_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_file = _names_file(tmp_path, "a", "b", "c")
+    monkeypatch.setenv("STRIX_MCP_ONLY", "a,c")
+
+    configs = load_user_mcp_configs(config_file)
+
+    assert [c.name for c in configs] == ["a", "c"]
+
+
+def test_loader_exclude_selection_drops_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_file = _names_file(tmp_path, "a", "b", "c")
+    monkeypatch.setenv("STRIX_MCP_EXCLUDE", "b")
+
+    configs = load_user_mcp_configs(config_file)
+
+    assert [c.name for c in configs] == ["a", "c"]

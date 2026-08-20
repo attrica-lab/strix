@@ -74,6 +74,23 @@ def _mcp_startup_summary(connections: list[ConnectedMcpServer]) -> str:
     return f"MCP: connected {server_count} {servers_word} ({tool_count} {tools_word}): {names}"
 
 
+def _mcp_connection_notes(connections: list[ConnectedMcpServer]) -> str | None:
+    """A block describing the connections the user left notes on, for the agent.
+
+    Only connections with notes are listed, so the note describes the connection
+    once rather than being repeated onto every tool. Returns ``None`` when no
+    connection has notes.
+    """
+    noted = [(c.name, c.notes) for c in connections if c.notes]
+    if not noted:
+        return None
+    lines = "\n".join(f"- `{name}.*` tools: {notes}" for name, notes in noted)
+    return (
+        "The user connected these MCP servers for this run and left notes on how "
+        f"to use each:\n{lines}"
+    )
+
+
 def _merge_root_prompt_context(
     scope_context: dict[str, Any],
     extra_system_prompt_context: dict[str, Any] | None,
@@ -323,6 +340,9 @@ async def run_strix_scan(
                 mcp_servers = [c.server for c in connections]
                 if connections:
                     report(_mcp_startup_summary(connections))
+                    notes_block = _mcp_connection_notes(connections)
+                    if notes_block:
+                        root_task = f"{root_task}\n\n{notes_block}"
         except Exception:
             logger.exception("Failed to connect user MCP servers; continuing without them")
 

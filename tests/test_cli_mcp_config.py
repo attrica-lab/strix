@@ -59,3 +59,30 @@ def test_mcp_config_flag_rejects_missing_file(
         cli_main.parse_arguments()
 
     assert "--mcp-config file not found" in capsys.readouterr().err
+
+
+def test_mcp_server_flags_set_selection_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_settings(monkeypatch)
+    monkeypatch.delenv("STRIX_MCP_ONLY", raising=False)
+    monkeypatch.delenv("STRIX_MCP_EXCLUDE", raising=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "strix",
+            "-t",
+            "https://test.com/",
+            "-n",
+            "--mcp-server",
+            "a",
+            "--mcp-server",
+            "b",
+            "--mcp-exclude",
+            "c",
+        ],
+    )
+
+    cli_main.parse_arguments()
+
+    assert os.environ["STRIX_MCP_ONLY"] == "a,b"
+    assert os.environ["STRIX_MCP_EXCLUDE"] == "c"
