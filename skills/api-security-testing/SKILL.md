@@ -19,7 +19,7 @@ APIs are near-impossible to test blind, so collect first:
 
 | Input | Why it matters |
 |---|---|
-| **Schema** — OpenAPI/Swagger file, Postman collection, GraphQL endpoint (introspection), or `.proto` | Turns guesswork into full endpoint enumeration. Biggest single win in coverage, and Strix takes a spec directly as a target. |
+| **Schema** — OpenAPI/Swagger file, Postman collection, GraphQL endpoint (introspection), or a gRPC `.proto` | Turns guesswork into full endpoint enumeration. Biggest single win in coverage. An OpenAPI/Swagger or Postman spec (`.json`/`.yaml`/`.yml`) is a target Strix takes directly; a `.proto` is not, so pass it with `--workspace-file`. |
 | **Two sets of credentials/tokens**, ideally in different tenants | BOLA/IDOR — API1:2023, still the #1 API risk — can only be *proven* by accessing tenant A's objects with tenant B's token. |
 | **A low-privilege and a high-privilege token** | Required to prove broken function-level authorization (API5:2023 — a `user` calling admin-only routes). |
 | **Example object IDs** | Lets agents test ID tampering immediately instead of hunting for valid identifiers. |
@@ -44,6 +44,7 @@ Out of scope: POST /billing/*, POST /notifications/broadcast."
 - **Postman instead of OpenAPI:** a collection export works as a target (`-t ./collection.postman_collection.json`), or pull one live with `-t postman://<collection-uuid>` (optionally `"postman://<collection-uuid>?env=<environment-uuid>"`), which needs `POSTMAN_API_KEY` in the environment.
 - **Many services at once:** put one target per line in a file and pass `--target-list ./targets.txt`, repeatable and combinable with `-t`.
 - **Add the backend source for depth:** `-t ./services/api -t https://api.staging.example.com`. With code access the agents can reason about authorization checks and object ownership rather than inferring them from responses.
+- **gRPC:** target the endpoint and pass the definition as a workspace file, `-t https://grpc.staging.example.com --workspace-file ./service.proto`. Only `.json`, `.yaml`, and `.yml` specs are recognized as targets, so `-t ./service.proto` fails with "Path exists but is not a directory".
 - **GraphQL:** point at the GraphQL endpoint and say whether introspection is enabled; call out that you want batching/aliasing abuse, depth/complexity limits, and per-field authorization tested.
 - **Internal/private APIs** unreachable from your machine: use the managed platform's network connector — see **managed-pentesting-with-strix**.
 - Use `--instruction-file` when the credential/context block gets long, and keep tokens out of shell history and out of committed files.
