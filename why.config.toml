@@ -1,0 +1,11 @@
+# why.config.toml — read by Attrica to find this repository's decision records.
+#
+# `intent_sources.records` is the only key Attrica reads; anything else here is
+# yours and is ignored. Each entry is a directory, relative to the repository
+# root, holding why records (markdown decision records — see
+# https://github.com/attrica/whyspec). Roots are walked in the order listed.
+#
+# NOTE: the bare filename `Whyfile` is reserved by the spec and must not be used.
+
+[intent_sources]
+records = ["docs/decisions"]
