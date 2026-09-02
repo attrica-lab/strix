@@ -98,3 +98,6 @@ schema.graphql
 /.benchmarks/
 /references/
 /strix_runs_main/
+
+# Attrica: local recall log written by the why hook
+.attrica/
