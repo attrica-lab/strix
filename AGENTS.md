@@ -55,3 +55,4 @@ Target-specific workflows built on the same engine:
 - Run from source: `uv run strix --target <target>`.
 - Layout: `strix/agents` (agent graph + prompts), `strix/tools` (proxy, browser, terminal, scanners), `strix/runtime` (Docker sandbox), `strix/report` (findings, SARIF), `strix/skills` (internal knowledge packs the pentest agents load — different from the consumer skills in `skills/`), `strix/interface` (CLI/TUI), `containers/` (sandbox image).
 - Pre-commit hooks: `make pre-commit` (or `uv run pre-commit install`).
+- **Decision records:** when a decision settles — an approach chosen over alternatives, a constraint accepted, something deliberately not done — record it as a why record in `docs/decisions/` using the `capture-decision` skill ([`.claude/skills/capture-decision/SKILL.md`](.claude/skills/capture-decision/SKILL.md)). One decision, one file, a minute of writing.
